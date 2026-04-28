@@ -1,0 +1,22 @@
+- main [ref=e3]:
+  - generic "Eclipse Survivors playfield" [ref=e4]
+  - generic:
+    - generic:
+      - generic "Health":
+        - strong: "144"
+      - generic "Experience":
+        - strong: Lv 4
+    - generic:
+      - generic: 0:48
+      - generic: 35 defeated
+    - generic:
+      - generic:
+        - text: Magic Bolt
+        - generic: "1"
+      - generic:
+        - text: Astral Orbit
+        - generic: "1"
+      - generic:
+        - text: Area Pulse
+        - generic: "1"
+    - button "Pause" [ref=e11] [cursor=pointer]: "||"
