@@ -849,27 +849,80 @@ export class GameEngine {
   }
 
   private drawBossEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
-    ctx.shadowBlur = 32;
-    ctx.shadowColor = enemy.color;
-    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
-    ctx.strokeStyle = '#ffffff88';
-    ctx.lineWidth = 2;
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const px = this.state.player.position.x;
+    const py = this.state.player.position.y;
+
+    // Outer aura (two concentric gradients, no shadowBlur)
+    const outerAuraR = r * 1.9 + Math.sin(t * 1.8) * 4;
+    const innerAuraR = r * 1.35 + Math.sin(t * 3) * 3;
+    ctx.shadowBlur = 0;
+    this.drawRadialGlow(ctx, r * 0.6, outerAuraR, 'rgba(255,51,95,0.45)', 'rgba(255,51,95,0)');
+    this.drawRadialGlow(ctx, r * 0.4, innerAuraR, 'rgba(255,150,90,0.55)', 'rgba(255,51,95,0)');
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    bodyGrad.addColorStop(0, '#1a0408');
+    bodyGrad.addColorStop(0.55, '#6e0c1f');
+    bodyGrad.addColorStop(1, '#ff335f');
+    ctx.shadowBlur = 28;
+    ctx.shadowColor = '#ff335f';
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : bodyGrad;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255,209,102,0.67)';
+    ctx.lineWidth = 3;
     ctx.stroke();
-    ctx.globalAlpha = 0.45;
+
+    // Rotating rune arcs
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = '#ffd166';
     ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius + 12 + Math.sin(this.state.elapsed * 4) * 4, 0, Math.PI * 2);
+    ctx.arc(0, 0, r + 16, t * 1.2, t * 1.2 + Math.PI * 1.1);
     ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#18040c';
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#ff8aa1';
+    ctx.strokeStyle = '#ff8aa1';
     ctx.beginPath();
-    ctx.arc(-16, -8, 7, 0, Math.PI * 2);
-    ctx.arc(16, -8, 7, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(0, 0, r + 24, -t * 0.85, -t * 0.85 + Math.PI * 0.6);
+    ctx.stroke();
+    ctx.restore();
+
+    // Tracking eyes
+    const dx = px - enemy.position.x;
+    const dy = py - enemy.position.y;
+    const aimLen = Math.hypot(dx, dy) || 1;
+    const aimX = dx / aimLen;
+    const aimY = dy / aimLen;
+
+    ctx.shadowBlur = 0;
+
+    for (const side of [-1, 1]) {
+      const ex = side * 18;
+      const ey = -8;
+      // Sclera
+      ctx.fillStyle = '#fff3b0';
+      ctx.beginPath();
+      ctx.arc(ex, ey, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // Pupil offset toward player
+      ctx.fillStyle = '#18040c';
+      ctx.beginPath();
+      ctx.arc(ex + aimX * 3, ey + aimY * 3, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(ex + aimX * 2 + 1.5, ey + aimY * 2 - 1.5, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   private drawEnemyHealth(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
