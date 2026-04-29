@@ -646,6 +646,7 @@ export class GameEngine {
     const haloAlpha = 0.8 + Math.sin(t * 3 + idHash) * 0.2;
     const px = this.state.player.position.x;
     const py = this.state.player.position.y;
+    this.applyHitSquash(ctx, enemy.hitFlash);
 
     // Halo
     ctx.save();
@@ -695,6 +696,8 @@ export class GameEngine {
       ctx.fill();
       ctx.fillStyle = '#0b0f1a';
     }
+
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
   }
 
   private drawFastEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
@@ -702,6 +705,7 @@ export class GameEngine {
     const t = this.state.elapsed;
     const idHash = enemy.id.charCodeAt(enemy.id.length - 1);
     const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+    this.applyHitSquash(ctx, enemy.hitFlash);
     const angle = speed > 1
       ? Math.atan2(enemy.velocity.y, enemy.velocity.x)
       : Math.atan2(
@@ -763,11 +767,13 @@ export class GameEngine {
     ctx.fill();
 
     ctx.restore();
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
   }
 
   private drawTankEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
     const r = enemy.radius;
     const rotation = Math.PI / 6; // flat-top hex, no drift
+    this.applyHitSquash(ctx, enemy.hitFlash);
 
     // Ground shadow
     this.drawShadowBlob(ctx, r * 1.15, r * 0.35, r * 0.6, 0.55);
@@ -801,12 +807,15 @@ export class GameEngine {
       ctx.arc(Math.cos(angle) * r * 0.55, Math.sin(angle) * r * 0.55, r * 0.07, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
   }
 
   private drawRangedEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
     const r = enemy.radius;
     const t = this.state.elapsed;
     const c = clamp(1 - enemy.cooldown / 0.5, 0, 1);
+    this.applyHitSquash(ctx, enemy.hitFlash);
 
     // Pre-fire jitter
     if (c > 0.7) {
@@ -846,6 +855,7 @@ export class GameEngine {
     }
 
     void t; // used implicitly via elapsed-based state
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
   }
 
   private drawBossEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
@@ -853,6 +863,7 @@ export class GameEngine {
     const t = this.state.elapsed;
     const px = this.state.player.position.x;
     const py = this.state.player.position.y;
+    this.applyHitSquash(ctx, enemy.hitFlash);
 
     // Outer aura (two concentric gradients, no shadowBlur)
     const outerAuraR = r * 1.9 + Math.sin(t * 1.8) * 4;
@@ -923,17 +934,17 @@ export class GameEngine {
       ctx.arc(ex + aimX * 2 + 1.5, ey + aimY * 2 - 1.5, 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
   }
 
   private drawEnemyHealth(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
-    const width = enemy.type === 'boss' ? 130 : 42;
-    const y = -enemy.radius - 18;
+    const isBoss = enemy.type === 'boss';
+    const width = isBoss ? 170 : 42;
+    const height = isBoss ? 9 : 6;
+    const y = -enemy.radius - 14;
     const ratio = clamp(enemy.health / enemy.maxHealth, 0, 1);
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#180d16';
-    ctx.fillRect(-width / 2, y, width, 5);
-    ctx.fillStyle = enemy.type === 'boss' ? '#ff335f' : '#5eead4';
-    ctx.fillRect(-width / 2, y, width * ratio, 5);
+    this.drawHealthBarRounded(ctx, width, height, y, ratio, isBoss);
   }
 
   private drawOrbitWeapon(ctx: CanvasRenderingContext2D): void {
@@ -1084,26 +1095,6 @@ export class GameEngine {
       ctx.fillText(String(text.amount), text.position.x, text.position.y);
       ctx.restore();
     }
-  }
-
-  private drawPolygon(ctx: CanvasRenderingContext2D, radius: number, sides: number, rotation: number): void {
-    ctx.beginPath();
-
-    for (let index = 0; index < sides; index += 1) {
-      const angle = rotation + (Math.PI * 2 * index) / sides;
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
   }
 
   private drawVignette(ctx: CanvasRenderingContext2D): void {
