@@ -622,25 +622,13 @@ export class GameEngine {
     for (const enemy of this.state.enemies) {
       ctx.save();
       ctx.translate(enemy.position.x, enemy.position.y);
-      ctx.shadowBlur = enemy.type === 'boss' ? 32 : 18;
-      ctx.shadowColor = enemy.color;
-      ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
-      ctx.strokeStyle = '#ffffff88';
-      ctx.lineWidth = 2;
 
-      if (enemy.type === 'fast') {
-        this.drawPolygon(ctx, enemy.radius, 3, this.state.elapsed * 2);
-      } else if (enemy.type === 'tank') {
-        this.drawPolygon(ctx, enemy.radius, 6, this.state.elapsed * 0.7);
-      } else if (enemy.type === 'ranged') {
-        this.drawPolygon(ctx, enemy.radius, 4, Math.PI / 4);
-      } else if (enemy.type === 'boss') {
-        this.drawBoss(ctx, enemy);
-      } else {
-        ctx.beginPath();
-        ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+      switch (enemy.type) {
+        case 'basic': this.drawBasicEnemy(ctx, enemy); break;
+        case 'fast': this.drawFastEnemy(ctx, enemy); break;
+        case 'tank': this.drawTankEnemy(ctx, enemy); break;
+        case 'ranged': this.drawRangedEnemy(ctx, enemy); break;
+        case 'boss': this.drawBossEnemy(ctx, enemy); break;
       }
 
       if (enemy.health < enemy.maxHealth || enemy.type === 'boss') {
@@ -651,7 +639,51 @@ export class GameEngine {
     }
   }
 
-  private drawBoss(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+  private drawBasicEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = enemy.color;
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+    ctx.strokeStyle = '#ffffff88';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  private drawFastEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = enemy.color;
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+    ctx.strokeStyle = '#ffffff88';
+    ctx.lineWidth = 2;
+    this.drawPolygon(ctx, enemy.radius, 3, this.state.elapsed * 2);
+  }
+
+  private drawTankEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = enemy.color;
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+    ctx.strokeStyle = '#ffffff88';
+    ctx.lineWidth = 2;
+    this.drawPolygon(ctx, enemy.radius, 6, this.state.elapsed * 0.7);
+  }
+
+  private drawRangedEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = enemy.color;
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+    ctx.strokeStyle = '#ffffff88';
+    ctx.lineWidth = 2;
+    this.drawPolygon(ctx, enemy.radius, 4, Math.PI / 4);
+  }
+
+  private drawBossEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    ctx.shadowBlur = 32;
+    ctx.shadowColor = enemy.color;
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+    ctx.strokeStyle = '#ffffff88';
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
     ctx.fill();
@@ -793,5 +825,112 @@ export class GameEngine {
     gradient.addColorStop(1, 'rgba(0,0,0,0.62)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
+  }
+
+  private drawRadialGlow(ctx: CanvasRenderingContext2D, innerR: number, outerR: number, innerColor: string, outerColor = 'rgba(0,0,0,0)'): void {
+    const g = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR);
+    g.addColorStop(0, innerColor);
+    g.addColorStop(1, outerColor);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawShadowBlob(ctx: CanvasRenderingContext2D, rx: number, ry: number, yOffset: number, alpha = 0.45): void {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000000';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.ellipse(0, yOffset, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawGradientPolygon(ctx: CanvasRenderingContext2D, radius: number, sides: number, rotation: number, fill: CanvasGradient | string, stroke?: string, lineWidth = 2): void {
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const angle = rotation + (Math.PI * 2 * i) / sides;
+      if (i === 0) {
+        ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+      } else {
+        ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+      }
+    }
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke !== undefined) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+  }
+
+  private drawHealthBarRounded(ctx: CanvasRenderingContext2D, width: number, height: number, y: number, ratio: number, isBoss: boolean): void {
+    const x = -width / 2;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(8,4,18,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, height / 2);
+    ctx.fill();
+
+    if (ratio > 0) {
+      const fillWidth = Math.max(height, width * ratio);
+      const grad = ctx.createLinearGradient(x, 0, x + width, 0);
+
+      if (ratio > 0.6) {
+        grad.addColorStop(0, '#5eead4');
+        grad.addColorStop(1, '#38bdf8');
+      } else if (ratio > 0.3) {
+        grad.addColorStop(0, '#fde68a');
+        grad.addColorStop(1, '#f59e0b');
+      } else {
+        grad.addColorStop(0, '#fb7185');
+        grad.addColorStop(1, '#ef4444');
+      }
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(x, y, fillWidth, height, height / 2);
+      ctx.fill();
+    }
+
+    if (isBoss) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(0, y + height);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,209,102,0.53)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, width, height, height / 2);
+      ctx.stroke();
+    }
+  }
+
+  private drawHitImpact(ctx: CanvasRenderingContext2D, radius: number, hitFlash: number): void {
+    if (hitFlash <= 0) return;
+    const progress = (0.12 - hitFlash) / 0.12;
+    ctx.save();
+    ctx.globalAlpha = hitFlash / 0.12;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * (1 + progress), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private applyHitSquash(ctx: CanvasRenderingContext2D, hitFlash: number): void {
+    if (hitFlash > 0) {
+      ctx.scale(1 + hitFlash * 0.6, 1 - hitFlash * 0.6);
+    }
   }
 }
