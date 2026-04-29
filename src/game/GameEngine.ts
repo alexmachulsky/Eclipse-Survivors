@@ -640,24 +640,129 @@ export class GameEngine {
   }
 
   private drawBasicEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = enemy.color;
-    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
-    ctx.strokeStyle = '#ffffff88';
-    ctx.lineWidth = 2;
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const idHash = enemy.id.charCodeAt(enemy.id.length - 1);
+    const haloAlpha = 0.8 + Math.sin(t * 3 + idHash) * 0.2;
+    const px = this.state.player.position.x;
+    const py = this.state.player.position.y;
+
+    // Halo
+    ctx.save();
+    ctx.globalAlpha = haloAlpha;
+    this.drawRadialGlow(ctx, r * 0.3, r * 1.9, 'rgba(124,247,255,0.5)', 'rgba(124,247,255,0)');
+    ctx.restore();
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    bodyGrad.addColorStop(0, '#0a3a44');
+    bodyGrad.addColorStop(0.6, '#1ec9d6');
+    bodyGrad.addColorStop(1, '#7cf7ff');
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#7cf7ff';
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : bodyGrad;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(186,252,255,0.67)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    // Eyes oriented toward player
+    const dx = px - enemy.position.x;
+    const dy = py - enemy.position.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const aimX = dx / len;
+    const aimY = dy / len;
+    const perpX = -aimY;
+    const perpY = aimX;
+    const eyeOffset = r * 0.35;
+    const eyeR = r * 0.14;
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#0b0f1a';
+
+    for (const side of [-1, 1]) {
+      const ex = aimX * eyeOffset + perpX * side * r * 0.28;
+      const ey = aimY * eyeOffset + perpY * side * r * 0.28;
+      ctx.beginPath();
+      ctx.arc(ex, ey, eyeR, 0, Math.PI * 2);
+      ctx.fill();
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.beginPath();
+      ctx.arc(ex + eyeR * 0.3, ey - eyeR * 0.3, eyeR * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0b0f1a';
+    }
   }
 
   private drawFastEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = enemy.color;
-    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
-    ctx.strokeStyle = '#ffffff88';
-    ctx.lineWidth = 2;
-    this.drawPolygon(ctx, enemy.radius, 3, this.state.elapsed * 2);
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const idHash = enemy.id.charCodeAt(enemy.id.length - 1);
+    const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+    const angle = speed > 1
+      ? Math.atan2(enemy.velocity.y, enemy.velocity.x)
+      : Math.atan2(
+          this.state.player.position.y - enemy.position.y,
+          this.state.player.position.x - enemy.position.x
+        );
+
+    // Motion trail (only when moving fast)
+    if (speed > 90) {
+      ctx.save();
+      for (let k = 1; k <= 3; k++) {
+        const tx = (-enemy.velocity.x / speed) * r * k * 0.55;
+        const ty = (-enemy.velocity.y / speed) * r * k * 0.55;
+        ctx.globalAlpha = 0.45 * (1 - k / 4);
+        ctx.fillStyle = '#ff5edb';
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(r * 1.2, 0);
+        ctx.lineTo(-r * 0.7, -r * 0.85);
+        ctx.lineTo(-r * 0.25, 0);
+        ctx.lineTo(-r * 0.7, r * 0.85);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // Body chevron
+    ctx.save();
+    ctx.rotate(angle);
+
+    const prowGrad = ctx.createLinearGradient(-r * 0.7, 0, r * 1.2, 0);
+    prowGrad.addColorStop(0, '#ff5edb');
+    prowGrad.addColorStop(1, '#ffb8f0');
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = '#ff5edb';
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : prowGrad;
+    ctx.strokeStyle = 'rgba(255,232,250,0.67)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(r * 1.2, 0);
+    ctx.lineTo(-r * 0.7, -r * 0.85);
+    ctx.lineTo(-r * 0.25, 0);
+    ctx.lineTo(-r * 0.7, r * 0.85);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Tail spark
+    const sparkScale = 0.85 + Math.sin(t * 8 + idHash) * 0.15;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#fff7ad';
+    ctx.fillStyle = '#fff7ad';
+    ctx.beginPath();
+    ctx.arc(-r * 0.7, 0, r * 0.18 * sparkScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   private drawTankEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
