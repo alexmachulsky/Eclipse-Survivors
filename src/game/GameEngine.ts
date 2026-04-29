@@ -744,28 +744,93 @@ export class GameEngine {
 
   private drawPlayer(ctx: CanvasRenderingContext2D): void {
     const player = this.state.player;
-    const flash = player.invulnerableTimer > 0 && Math.floor(player.invulnerableTimer * 18) % 2 === 0;
+    const r = player.radius;
+    const t = this.state.elapsed;
+    const iframes = player.invulnerableTimer > 0;
 
     ctx.save();
     ctx.translate(player.position.x, player.position.y);
+
+    // Ground shadow blob (before rotate, stays flat)
+    this.drawShadowBlob(ctx, r * 1.05, r * 0.32, r * 0.55, 0.45);
+
     ctx.rotate(player.facingAngle);
-    ctx.globalAlpha = flash ? 0.42 : 1;
-    ctx.shadowBlur = 26;
+    ctx.globalAlpha = iframes ? 0.88 : 1;
+
+    // Outer halo (radial gradient, no shadowBlur)
+    const haloAlpha = 0.85 + Math.sin(t * 2.4) * 0.15;
+    ctx.save();
+    ctx.globalAlpha = (iframes ? 0.88 : 1) * haloAlpha;
+    this.drawRadialGlow(ctx, r * 0.4, r * 2.4, 'rgba(94,234,212,0.55)', 'rgba(94,234,212,0)');
+    ctx.restore();
+
+    // Mid hull
+    const hullGrad = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
+    hullGrad.addColorStop(0, '#1b2840');
+    hullGrad.addColorStop(0.7, '#122036');
+    hullGrad.addColorStop(1, '#0a1426');
+    ctx.fillStyle = hullGrad;
+    ctx.shadowBlur = 14;
     ctx.shadowColor = '#5eead4';
-    ctx.fillStyle = '#111827';
-    ctx.strokeStyle = '#5eead4';
-    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#5eead4';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
-    ctx.fillStyle = '#ffd166';
+
+    // Inner core (pulsing)
+    const coreScale = 1 + Math.sin(t * 3) * 0.06;
+    const coreR = r * 0.5 * coreScale;
+    ctx.shadowBlur = 0;
+    this.drawRadialGlow(ctx, 0, coreR, '#d3fff5', 'rgba(94,234,212,0)');
+
+    // Directional prow (replaces flat triangle)
+    const prowGrad = ctx.createLinearGradient(r * 0.2, 0, r + 12, 0);
+    prowGrad.addColorStop(0, '#ffd166');
+    prowGrad.addColorStop(1, '#fff3b0');
+    ctx.fillStyle = prowGrad;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#ffd166';
+    ctx.strokeStyle = 'rgba(255,243,176,0.67)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(player.radius + 8, 0);
-    ctx.lineTo(4, -7);
-    ctx.lineTo(4, 7);
+    ctx.moveTo(r + 12, 0);
+    ctx.lineTo(r * 0.2, -r * 0.55);
+    ctx.lineTo(r * 0.5, 0);
+    ctx.lineTo(r * 0.2, r * 0.55);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
+
+    // Invulnerability shimmer rings
+    if (iframes) {
+      const shimmerAlpha = clamp(player.invulnerableTimer / 0.9, 0, 1) * 0.85;
+      ctx.shadowBlur = 10;
+
+      ctx.save();
+      ctx.rotate(t * 4);
+      ctx.globalAlpha = shimmerAlpha;
+      ctx.strokeStyle = '#a7f3d0';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#a7f3d0';
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 6, 0, (Math.PI * 2) / 3);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.rotate(-t * 5.2);
+      ctx.globalAlpha = shimmerAlpha;
+      ctx.strokeStyle = '#67e8f9';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#67e8f9';
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 6, Math.PI, Math.PI + (Math.PI * 2) / 3);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.restore();
   }
 
