@@ -766,21 +766,86 @@ export class GameEngine {
   }
 
   private drawTankEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = enemy.color;
-    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
-    ctx.strokeStyle = '#ffffff88';
+    const r = enemy.radius;
+    const rotation = Math.PI / 6; // flat-top hex, no drift
+
+    // Ground shadow
+    this.drawShadowBlob(ctx, r * 1.15, r * 0.35, r * 0.6, 0.55);
+
+    // Hex body with metallic gradient
+    const hexGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    hexGrad.addColorStop(0, '#0e0a1f');
+    hexGrad.addColorStop(0.55, '#3a2a6e');
+    hexGrad.addColorStop(1, '#a78bfa');
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = '#a78bfa';
+    this.drawGradientPolygon(ctx, r, 6, rotation, enemy.hitFlash > 0 ? '#ffffff' : hexGrad, '#dcd0ff', 2);
+
+    // Plate spokes
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(20,8,48,0.7)';
     ctx.lineWidth = 2;
-    this.drawPolygon(ctx, enemy.radius, 6, this.state.elapsed * 0.7);
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = rotation + (Math.PI * 2 * i) / 6;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+    }
+    ctx.stroke();
+
+    // Rivets at 55% radius along each spoke
+    ctx.fillStyle = '#ede9fe';
+    for (let i = 0; i < 6; i++) {
+      const angle = rotation + (Math.PI * 2 * i) / 6;
+      ctx.beginPath();
+      ctx.arc(Math.cos(angle) * r * 0.55, Math.sin(angle) * r * 0.55, r * 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   private drawRangedEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
-    ctx.shadowBlur = 18;
-    ctx.shadowColor = enemy.color;
-    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
-    ctx.strokeStyle = '#ffffff88';
-    ctx.lineWidth = 2;
-    this.drawPolygon(ctx, enemy.radius, 4, Math.PI / 4);
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const c = clamp(1 - enemy.cooldown / 0.5, 0, 1);
+
+    // Pre-fire jitter
+    if (c > 0.7) {
+      ctx.translate((this.rng() - 0.5) * 1.5, (this.rng() - 0.5) * 1.5);
+    }
+
+    // Diamond body (lit-lantern: light center → dark edge)
+    const diamondGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    diamondGrad.addColorStop(0, '#fff3b0');
+    diamondGrad.addColorStop(0.55, '#ffb84d');
+    diamondGrad.addColorStop(1, '#6b3a05');
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#ffd166';
+    this.drawGradientPolygon(ctx, r, 4, Math.PI / 4, enemy.hitFlash > 0 ? '#ffffff' : diamondGrad, '#fff3b0', 2);
+
+    // Charging core
+    const coreR = r * (0.35 + c * 0.45);
+    ctx.shadowBlur = 8 + c * 22;
+    ctx.shadowColor = '#fff3b0';
+    this.drawRadialGlow(ctx, 0, coreR, 'rgba(255,255,255,0.95)', 'rgba(255,209,102,0)');
+
+    // Aim line toward player when charging
+    if (c > 0) {
+      const px = this.state.player.position.x - enemy.position.x;
+      const py = this.state.player.position.y - enemy.position.y;
+      const plen = Math.hypot(px, py) || 1;
+      ctx.save();
+      ctx.globalAlpha = c * 0.67;
+      ctx.strokeStyle = '#fff3b0';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo((px / plen) * r * 1.4, (py / plen) * r * 1.4);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    void t; // used implicitly via elapsed-based state
   }
 
   private drawBossEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
