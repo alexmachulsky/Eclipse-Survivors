@@ -36,15 +36,20 @@ export interface Player {
   damageMultiplier: number;
   attackRateMultiplier: number;
   pickupRadius: number;
+  passives: Partial<Record<PassiveId, number>>;
+  areaMultiplier: number;
+  projectileSpeedMultiplier: number;
   invulnerableTimer: number;
   facingAngle: number;
 }
 
 export type EnemyType = 'basic' | 'fast' | 'tank' | 'ranged' | 'boss';
+export type EnemyRank = 'normal' | 'elite' | 'boss';
 
 export interface Enemy {
   id: string;
   type: EnemyType;
+  rank: EnemyRank;
   position: Vector;
   velocity: Vector;
   radius: number;
@@ -79,6 +84,8 @@ export interface Projectile {
 }
 
 export type WeaponId = 'magic-bolt' | 'orbit' | 'area-pulse' | 'piercing-arrow';
+export type PassiveId = 'cooldown-sigil' | 'astral-lens' | 'void-core' | 'keen-fletching';
+export type EvolutionId = 'starfall-lance' | 'gravitic-halo' | 'supernova-bloom' | 'comet-volley';
 
 export interface Weapon {
   id: WeaponId;
@@ -89,17 +96,22 @@ export interface Weapon {
   damage: number;
   range: number;
   unlocked: boolean;
+  evolved?: boolean;
+  evolutionId?: EvolutionId;
+  tags: string[];
 }
 
-export type UpgradeKind = 'stat' | 'weapon';
+export type UpgradeKind = 'stat' | 'weapon' | 'passive' | 'evolution';
 
 export interface UpgradeOption {
   id: string;
   title: string;
   description: string;
   kind: UpgradeKind;
-  stat?: 'damage' | 'attackRate' | 'moveSpeed' | 'maxHealth' | 'pickupRadius';
+  stat?: 'damage' | 'attackRate' | 'moveSpeed' | 'maxHealth' | 'pickupRadius' | 'area' | 'projectileSpeed';
   weaponId?: WeaponId;
+  passiveId?: PassiveId;
+  evolutionId?: EvolutionId;
 }
 
 export interface DamageText {
@@ -121,6 +133,16 @@ export interface XPGem {
   life: number;
 }
 
+export interface HealthPickup {
+  id: string;
+  position: Vector;
+  heal: number;
+  radius: number;
+  color: string;
+  life: number;
+  maxLife: number;
+}
+
 export interface Particle {
   id: string;
   position: Vector;
@@ -131,7 +153,47 @@ export interface Particle {
   maxLife: number;
 }
 
-export type GamePhase = 'menu' | 'playing' | 'paused' | 'levelUp' | 'gameOver' | 'victory';
+export type ObjectiveStatus = 'active' | 'completed' | 'cursed';
+
+export interface ObjectiveState {
+  id: string;
+  position: Vector;
+  radius: number;
+  spawnedAt: number;
+  captureProgress: number;
+  requiredCapture: number;
+  ignoreAfter: number;
+  state: ObjectiveStatus;
+}
+
+export interface RewardChest {
+  id: string;
+  position: Vector;
+  radius: number;
+  source: 'elite' | 'objective';
+  opened: boolean;
+  life: number;
+}
+
+export interface Telegraph {
+  id: string;
+  position: Vector;
+  angle: number;
+  width: number;
+  length: number;
+  life: number;
+  maxLife: number;
+  kind: 'line' | 'ring' | 'cone';
+  color: string;
+}
+
+export interface RunDirectorState {
+  spawnedElites: number[];
+  spawnedObjectives: number[];
+  bossSpawned: boolean;
+}
+
+export type GamePhase = 'menu' | 'playing' | 'paused' | 'levelUp' | 'chestReward' | 'gameOver' | 'victory';
 
 export interface GameStats {
   timeSurvived: number;
@@ -149,8 +211,15 @@ export interface GameState {
   playerProjectiles: Projectile[];
   enemyProjectiles: Projectile[];
   gems: XPGem[];
+  healthPickups: HealthPickup[];
   particles: Particle[];
   damageTexts: DamageText[];
+  objectives: ObjectiveState[];
+  rewardChests: RewardChest[];
+  pendingChestChoices: UpgradeOption[];
+  enemyCurseStacks: number;
+  runDirector: RunDirectorState;
+  telegraphs: Telegraph[];
   upgradeChoices: UpgradeOption[];
   level: number;
   xp: number;

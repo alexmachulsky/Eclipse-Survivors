@@ -83,6 +83,12 @@ button {
   border-left: 1px solid rgb(255 255 255 / 12%);
 }
 
+.hud-stat--act {
+  color: #cbd5e1;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
 /* ── HUD bottom bar ── */
 .hud-bottom {
   position: absolute;
@@ -136,6 +142,10 @@ button {
 
 .xp-meter span {
   background: linear-gradient(90deg, var(--c-common), var(--c-arcane));
+}
+
+.boss-health-meter span {
+  background: linear-gradient(90deg, var(--c-danger), var(--c-rare));
 }
 
 .meter strong {
@@ -201,6 +211,23 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   animation: boss-pulse 1s ease-in-out infinite alternate;
+}
+
+.objective-alert,
+.curse-alert {
+  box-shadow: inset 0 0 0 1px rgb(94 234 212 / 35%);
+  padding: 2px 8px;
+  border-radius: 5px;
+  color: var(--c-common);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.curse-alert {
+  color: var(--c-danger);
+  box-shadow: inset 0 0 0 1px rgb(255 51 95 / 40%);
 }
 
 @keyframes boss-pulse {
@@ -370,6 +397,21 @@ h2 {
   border-color: rgb(94 234 212 / 24%);
 }
 
+.upgrade-card--passive {
+  border-color: rgb(139 92 246 / 34%);
+  background:
+    linear-gradient(160deg, rgb(139 92 246 / 12%), transparent 50%),
+    rgb(15 23 42 / 86%);
+}
+
+.upgrade-card--evolution {
+  border-color: rgb(255 209 102 / 58%);
+  background:
+    linear-gradient(160deg, rgb(255 209 102 / 16%), transparent 44%),
+    linear-gradient(20deg, rgb(94 234 212 / 10%), transparent 58%),
+    rgb(15 23 42 / 90%);
+}
+
 .upgrade-card:hover,
 .upgrade-card:focus-visible {
   transform: translateY(-4px);
@@ -386,6 +428,18 @@ h2 {
 .upgrade-card--stat:focus-visible {
   border-color: rgb(94 234 212 / 60%);
   box-shadow: 0 18px 50px rgb(94 234 212 / 12%);
+}
+
+.upgrade-card--passive:hover,
+.upgrade-card--passive:focus-visible {
+  border-color: rgb(139 92 246 / 72%);
+  box-shadow: 0 18px 50px rgb(139 92 246 / 14%);
+}
+
+.upgrade-card--evolution:hover,
+.upgrade-card--evolution:focus-visible {
+  border-color: rgb(255 209 102 / 86%);
+  box-shadow: var(--shadow-pop);
 }
 
 .boon-tag {
@@ -406,6 +460,16 @@ h2 {
 .upgrade-card--stat .boon-tag {
   background: rgb(94 234 212 / 10%);
   color: var(--c-common);
+}
+
+.upgrade-card--passive .boon-tag {
+  background: rgb(139 92 246 / 16%);
+  color: #c4b5fd;
+}
+
+.upgrade-card--evolution .boon-tag {
+  background: rgb(255 209 102 / 16%);
+  color: var(--c-rare);
 }
 
 .boon-icon {

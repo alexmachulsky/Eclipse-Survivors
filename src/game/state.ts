@@ -1,5 +1,6 @@
 import type { GameState, Player, Vector, Weapon } from './types';
 import { getXpThreshold } from './upgrades';
+import { createRunDirectorState } from './runDirector';
 
 export function createStartingPlayer(position: Vector): Player {
   return {
@@ -11,6 +12,9 @@ export function createStartingPlayer(position: Vector): Player {
     damageMultiplier: 1,
     attackRateMultiplier: 1,
     pickupRadius: 145,
+    passives: {},
+    areaMultiplier: 1,
+    projectileSpeedMultiplier: 1,
     invulnerableTimer: 0,
     facingAngle: 0
   };
@@ -26,7 +30,8 @@ export function createStartingWeapons(): Weapon[] {
       fireRate: 0.62,
       damage: 16,
       range: 720,
-      unlocked: true
+      unlocked: true,
+      tags: ['projectile']
     },
     {
       id: 'orbit',
@@ -36,7 +41,8 @@ export function createStartingWeapons(): Weapon[] {
       fireRate: 0,
       damage: 10,
       range: 88,
-      unlocked: false
+      unlocked: false,
+      tags: ['orbit', 'area']
     },
     {
       id: 'area-pulse',
@@ -46,7 +52,8 @@ export function createStartingWeapons(): Weapon[] {
       fireRate: 3.2,
       damage: 18,
       range: 220,
-      unlocked: false
+      unlocked: false,
+      tags: ['area']
     },
     {
       id: 'piercing-arrow',
@@ -56,7 +63,8 @@ export function createStartingWeapons(): Weapon[] {
       fireRate: 1.35,
       damage: 19,
       range: 900,
-      unlocked: false
+      unlocked: false,
+      tags: ['projectile']
     }
   ];
 }
@@ -72,8 +80,15 @@ export function createInitialGameState(): GameState {
     playerProjectiles: [],
     enemyProjectiles: [],
     gems: [],
+    healthPickups: [],
     particles: [],
     damageTexts: [],
+    objectives: [],
+    rewardChests: [],
+    pendingChestChoices: [],
+    enemyCurseStacks: 0,
+    runDirector: createRunDirectorState(),
+    telegraphs: [],
     upgradeChoices: [],
     level,
     xp: 0,

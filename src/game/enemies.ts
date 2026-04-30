@@ -1,9 +1,10 @@
-import type { Enemy, EnemyType, Viewport } from './types';
-import { angleTo, normalizeVector, randomBetween, vectorFromAngle } from './collisions';
+import type { Enemy, EnemyRank, EnemyType, Viewport } from './types';
+import { angleTo, randomBetween, vectorFromAngle } from './collisions';
 
 const ENEMY_BLUEPRINTS: Record<EnemyType, Omit<Enemy, 'id' | 'position' | 'velocity' | 'cooldown' | 'hitFlash' | 'health'>> = {
   basic: {
     type: 'basic',
+    rank: 'normal',
     radius: 17,
     maxHealth: 22,
     speed: 68,
@@ -13,6 +14,7 @@ const ENEMY_BLUEPRINTS: Record<EnemyType, Omit<Enemy, 'id' | 'position' | 'veloc
   },
   fast: {
     type: 'fast',
+    rank: 'normal',
     radius: 12,
     maxHealth: 12,
     speed: 132,
@@ -22,6 +24,7 @@ const ENEMY_BLUEPRINTS: Record<EnemyType, Omit<Enemy, 'id' | 'position' | 'veloc
   },
   tank: {
     type: 'tank',
+    rank: 'normal',
     radius: 25,
     maxHealth: 72,
     speed: 42,
@@ -31,6 +34,7 @@ const ENEMY_BLUEPRINTS: Record<EnemyType, Omit<Enemy, 'id' | 'position' | 'veloc
   },
   ranged: {
     type: 'ranged',
+    rank: 'normal',
     radius: 18,
     maxHealth: 34,
     speed: 56,
@@ -40,6 +44,7 @@ const ENEMY_BLUEPRINTS: Record<EnemyType, Omit<Enemy, 'id' | 'position' | 'veloc
   },
   boss: {
     type: 'boss',
+    rank: 'boss',
     radius: 54,
     maxHealth: 1800,
     speed: 34,
@@ -67,8 +72,26 @@ export function scaleEnemyStats(type: EnemyType, _difficultyTier: number): Omit<
   };
 }
 
-export function spawnEnemyOutsideViewport(type: EnemyType, viewport: Viewport, difficultyTier: number, rng: () => number): Enemy {
-  const stats = scaleEnemyStats(type, difficultyTier);
+function applyRankModifiers(stats: Omit<Enemy, 'id' | 'position' | 'velocity' | 'cooldown' | 'hitFlash'>, rank: EnemyRank) {
+  if (rank !== 'elite') {
+    return { ...stats, rank };
+  }
+
+  const maxHealth = Math.round(stats.maxHealth * 2.8);
+
+  return {
+    ...stats,
+    rank,
+    radius: Math.round(stats.radius * 1.1),
+    maxHealth,
+    health: maxHealth,
+    damage: Math.round(stats.damage * 1.25),
+    xpValue: Math.max(1, Math.round(stats.xpValue * 1.1))
+  };
+}
+
+export function spawnEnemyOutsideViewport(type: EnemyType, viewport: Viewport, difficultyTier: number, rng: () => number, rank: EnemyRank = 'normal'): Enemy {
+  const stats = applyRankModifiers(scaleEnemyStats(type, difficultyTier), rank);
   const side = Math.floor(rng() * 4);
   const margin = 90 + stats.radius;
   let position = { x: 0, y: 0 };
@@ -112,31 +135,30 @@ export function chooseEnemyType(elapsed: number, difficultyTier: number, rng: ()
 }
 
 export function updateEnemies(enemies: Enemy[], playerPosition: { x: number; y: number }, dt: number): Enemy[] {
-  return enemies.map((enemy) => {
-    const toPlayer = normalizeVector({
-      x: playerPosition.x - enemy.position.x,
-      y: playerPosition.y - enemy.position.y
-    });
-    const distanceToPlayer = Math.hypot(playerPosition.x - enemy.position.x, playerPosition.y - enemy.position.y);
+  for (const enemy of enemies) {
+    const dx = playerPosition.x - enemy.position.x;
+    const dy = playerPosition.y - enemy.position.y;
+    const distanceToPlayer = Math.hypot(dx, dy);
+    const toPlayerX = distanceToPlayer === 0 ? 0 : dx / distanceToPlayer;
+    const toPlayerY = distanceToPlayer === 0 ? 0 : dy / distanceToPlayer;
     const shouldKite = enemy.type === 'ranged' && distanceToPlayer < 280;
-    const direction = shouldKite ? { x: -toPlayer.x, y: -toPlayer.y } : toPlayer;
+    const directionX = shouldKite ? -toPlayerX : toPlayerX;
+    const directionY = shouldKite ? -toPlayerY : toPlayerY;
     const speed = enemy.type === 'boss' && distanceToPlayer < 180 ? enemy.speed * 0.55 : enemy.speed;
 
-    return {
-      ...enemy,
-      position: {
-        x: enemy.position.x + direction.x * speed * dt,
-        y: enemy.position.y + direction.y * speed * dt
-      },
-      velocity: { x: direction.x * speed, y: direction.y * speed },
-      cooldown: Math.max(0, enemy.cooldown - dt),
-      hitFlash: Math.max(0, enemy.hitFlash - dt)
-    };
-  });
+    enemy.position.x += directionX * speed * dt;
+    enemy.position.y += directionY * speed * dt;
+    enemy.velocity.x = directionX * speed;
+    enemy.velocity.y = directionY * speed;
+    enemy.cooldown = Math.max(0, enemy.cooldown - dt);
+    enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+  }
+
+  return enemies;
 }
 
 export function getBossSpawn(viewport: Viewport, difficultyTier: number): Enemy {
-  const stats = scaleEnemyStats('boss', difficultyTier);
+  const stats = { ...scaleEnemyStats('boss', difficultyTier), rank: 'boss' as const };
   const position = {
     x: viewport.x + viewport.width + 180,
     y: viewport.y + viewport.height * 0.5

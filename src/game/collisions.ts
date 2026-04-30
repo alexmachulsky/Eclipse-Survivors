@@ -17,8 +17,23 @@ export function circlesOverlap(a: Vector, aRadius: number, b: Vector, bRadius: n
   return Math.hypot(a.x - b.x, a.y - b.y) <= aRadius + bRadius;
 }
 
+export function circlesOverlapSq(a: Vector, aRadius: number, b: Vector, bRadius: number): boolean {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const radius = aRadius + bRadius;
+
+  return dx * dx + dy * dy <= radius * radius;
+}
+
 export function distance(a: Vector, b: Vector): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function distanceSq(a: Vector, b: Vector): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+
+  return dx * dx + dy * dy;
 }
 
 export function clamp(value: number, min: number, max: number): number {

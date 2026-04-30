@@ -50,7 +50,8 @@ export default function App() {
       {snapshot.phase !== 'menu' && <Hud snapshot={snapshot} onPause={pauseRun} />}
       {snapshot.phase === 'menu' && <MainMenu onStart={startRun} />}
       {snapshot.phase === 'paused' && <PauseMenu weapons={snapshot.weapons} onResume={resumeRun} onRestart={startRun} />}
-      {snapshot.phase === 'levelUp' && <UpgradeScreen choices={snapshot.upgradeChoices} onChoose={chooseUpgrade} />}
+      {snapshot.phase === 'levelUp' && <UpgradeScreen title="Choose a boon" label="Level Up" choices={snapshot.upgradeChoices} onChoose={chooseUpgrade} />}
+      {snapshot.phase === 'chestReward' && <UpgradeScreen title="Open the chest" label="Chest Reward" choices={snapshot.pendingChestChoices} onChoose={chooseUpgrade} />}
       {snapshot.phase === 'gameOver' && <EndScreen snapshot={snapshot} onRestart={startRun} />}
       {snapshot.phase === 'victory' && <EndScreen snapshot={snapshot} onRestart={startRun} victory />}
     </main>
