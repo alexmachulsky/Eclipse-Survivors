@@ -46,6 +46,7 @@ export function fireWeaponAtTarget(weapon: Weapon, player: Player, target: Enemy
       return {
         id: nextProjectileId('arrow'),
         owner: 'player',
+        weaponId: weapon.id,
         kind: 'arrow',
         position: { ...player.position },
         velocity: direction,
@@ -69,6 +70,7 @@ export function fireWeaponAtTarget(weapon: Weapon, player: Player, target: Enemy
       return {
         id: nextProjectileId('bolt'),
         owner: 'player',
+        weaponId: weapon.id,
         kind: 'bolt',
         position: { ...player.position },
         velocity: vectorFromAngle(angle + spread, (weapon.evolved ? 640 : 520) * projectileSpeed),
@@ -93,6 +95,7 @@ export function createAreaPulse(weapon: Weapon, player: Player): Projectile {
   return {
     id: nextProjectileId('pulse'),
     owner: 'player',
+    weaponId: weapon.id,
     kind: 'pulse',
     position: { ...player.position },
     velocity: { x: 0, y: 0 },

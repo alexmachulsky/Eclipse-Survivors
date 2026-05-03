@@ -70,6 +70,7 @@ export interface Projectile {
   id: string;
   owner: ProjectileOwner;
   ownerPlayerId?: string;
+  weaponId?: WeaponId;  // weapon that created this projectile (for damage tracking)
   kind: ProjectileKind;
   position: Vector;
   velocity: Vector;
@@ -126,6 +127,7 @@ export interface DamageText {
   life: number;
   maxLife: number;
   color: string;
+  text?: string;  // optional for streak/custom text display
 }
 
 export interface XPGem {

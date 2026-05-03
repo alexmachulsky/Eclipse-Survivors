@@ -221,6 +221,8 @@ export class GameEngine {
     this.state.stats.upgradesCollected += 1;
     this.state.upgradeChoices = [];
     this.state.pendingChestChoices = [];
+    // 2c: Track upgrade history
+    this.state.upgradeHistory.push(choice.title);
     this.state.phase = 'playing';
     this.addBurstParticles(this.state.player.position, choice.kind === 'evolution' ? '#ffd166' : '#5eead4', choice.kind === 'evolution' ? 34 : 14);
   }
@@ -232,27 +234,54 @@ export class GameEngine {
       return;
     }
 
+    // Apply time scale for effects like level-up slow-mo
+    const scaledDt = cappedDt * this.state.timeScale;
+
+    // Ramp timeScale back toward 1.0 (using raw dt, not scaled dt)
+    if (this.state.timeScale < 1.0) {
+      this.state.timeScale = Math.min(1.0, this.state.timeScale + cappedDt * 4);
+    }
+
+    // Tick down cinematic timer
+    if (this.state.cinematicState) {
+      this.state.cinematicState.timer -= cappedDt;
+      if (this.state.cinematicState.timer <= 0) {
+        this.state.cinematicState = null;
+      }
+    }
+
+    // Check kill streak expiry (2a)
+    if (this.state.elapsed > this.state.killStreakExpiry && this.state.killStreak > 0) {
+      this.state.killStreak = 0;
+    }
+
     const previousElapsed = this.state.elapsed;
-    this.state.elapsed += cappedDt;
+    this.state.elapsed += scaledDt;
     this.state.stats.timeSurvived = this.state.elapsed;
     this.state.difficultyTier = Math.floor(this.state.elapsed / 30);
-    this.state.screenShake = Math.max(0, this.state.screenShake - cappedDt * 24);
+    this.state.screenShake = Math.max(0, this.state.screenShake - scaledDt * 24);
     this.input.mouseWorld = this.screenToWorld(this.input.mouse);
-    this.updatePlayer(cappedDt);
+    this.updatePlayer(scaledDt);
     this.processRunDirectorEvents(collectRunDirectorEvents(this.state.runDirector, previousElapsed, this.state.elapsed));
-    this.updateObjectives(cappedDt);
-    this.spawnEnemies(cappedDt);
-    this.spawnHealthPickup(cappedDt);
-    this.updateWeapons(cappedDt);
-    this.state.enemies = updateEnemies(this.state.enemies, this.state.player.position, cappedDt);
-    this.updateRangedEnemies(cappedDt);
-    this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, cappedDt);
-    this.state.enemyProjectiles = updateProjectiles(this.state.enemyProjectiles, cappedDt);
+    this.updateObjectives(scaledDt);
+
+    // Pause gameplay during boss-spawn cinematic (first 0.6s)
+    const isInCinematic = this.state.cinematicState !== null && this.state.cinematicState.timer > 1.9;
+    if (!isInCinematic) {
+      this.spawnEnemies(scaledDt);
+      this.spawnHealthPickup(scaledDt);
+      this.updateWeapons(scaledDt);
+      this.state.enemies = updateEnemies(this.state.enemies, this.state.player.position, scaledDt);
+      this.updateRangedEnemies(scaledDt);
+    }
+
+    this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, scaledDt);
+    this.state.enemyProjectiles = updateProjectiles(this.state.enemyProjectiles, scaledDt);
     this.resolveCombat();
-    this.updateGems(cappedDt);
-    this.updateHealthPickups(cappedDt);
-    this.updateRewardChests(cappedDt);
-    this.updateEffects(cappedDt);
+    this.updateGems(scaledDt);
+    this.updateHealthPickups(scaledDt);
+    this.updateRewardChests(scaledDt);
+    this.updateEffects(scaledDt);
     this.checkEndStates();
   }
 
@@ -292,6 +321,10 @@ export class GameEngine {
 
     this.drawEdgeMarkers(ctx, viewport);
     this.drawVignette(ctx);
+    // 2d: Draw boss cinematic if active
+    if (this.state.cinematicState) {
+      this.drawBossCinematic(ctx, this.state.cinematicState.timer);
+    }
   }
 
   getSnapshot(): GameSnapshot {
@@ -356,6 +389,8 @@ export class GameEngine {
     this.state.enemies.push(getBossSpawn(this.getViewport(), this.state.difficultyTier));
     this.state.bossSpawned = true;
     this.state.screenShake = 22;
+    // 2d: Boss spawn cinematic
+    this.state.cinematicState = { type: 'boss-spawn', timer: 2.5 };
   }
 
   private updatePlayer(dt: number): void {
@@ -491,6 +526,8 @@ export class GameEngine {
       if (weapon.id === 'area-pulse') {
         projectiles.push(createAreaPulse(weapon, this.state.player));
         weapon.cooldown = Math.max(weapon.evolved ? 0.45 : 0.7, weapon.fireRate * Math.pow(weapon.evolved ? 0.84 : 0.9, weapon.level - 1));
+        // 2h: Muzzle flash for area-pulse
+        this.spawnMuzzleFlash(weapon);
         continue;
       }
 
@@ -502,6 +539,8 @@ export class GameEngine {
 
       projectiles.push(...fireWeaponAtTarget(weapon, this.state.player, target));
       weapon.cooldown = Math.max(weapon.evolved ? 0.1 : 0.16, weapon.fireRate * Math.pow(weapon.evolved ? 0.8 : 0.88, weapon.level - 1));
+      // 2h: Muzzle flash for projectile weapons
+      this.spawnMuzzleFlash(weapon);
     }
 
     this.state.playerProjectiles.push(...projectiles);
@@ -531,6 +570,8 @@ export class GameEngine {
           const damage = Math.round(weapon.damage * this.state.player.damageMultiplier * (1 + weapon.level * 0.28));
           this.pushDamageText(this.createDamageText(enemy, damage, '#f0abfc'));
           this.state.stats.damageDealt += damage;
+          // 2b: Track orbit weapon damage
+          this.state.weaponDamageDealt[weapon.id] = (this.state.weaponDamageDealt[weapon.id] ?? 0) + damage;
           enemy.health = Math.max(0, enemy.health - damage);
           enemy.hitFlash = 0.12;
           if (weapon.evolved) {
@@ -648,6 +689,10 @@ export class GameEngine {
         this.state.enemies[index] = result.enemy;
         this.pushDamageText(result.damageText);
         this.state.stats.damageDealt += result.damageText.amount;
+        // 2b: Track weapon damage
+        if (projectile.weaponId) {
+          this.state.weaponDamageDealt[projectile.weaponId] = (this.state.weaponDamageDealt[projectile.weaponId] ?? 0) + result.damageText.amount;
+        }
         const sparks = createStarfallSparks(projectile, result.enemy);
         if (sparks.length > 0 && this.state.playerProjectiles.length < 180) {
           this.state.playerProjectiles.push(...sparks);
@@ -710,6 +755,22 @@ export class GameEngine {
       }
 
       this.state.stats.kills += 1;
+
+      // 2a: Kill streak tracking
+      this.state.killStreak += 1;
+      this.state.killStreakExpiry = this.state.elapsed + 3; // streak resets after 3s
+
+      // Spawn streak milestone floaties (2a)
+      if (this.state.killStreak === 3) {
+        this.spawnStreakText('×3 🔥', '#ffd166');
+      } else if (this.state.killStreak === 5) {
+        this.spawnStreakText('×5 🔥🔥', '#ff5edb');
+      } else if (this.state.killStreak === 10) {
+        this.spawnStreakText('×10 🔥', '#ff335f');
+      } else if (this.state.killStreak === 20) {
+        this.spawnStreakText('×20 🔥', '#ff335f');
+      }
+
       this.state.gems.push(createXpGem(enemy));
       if (enemy.rank === 'elite') {
         this.createRewardChest(enemy.position, 'elite');
@@ -719,6 +780,53 @@ export class GameEngine {
         const particles = createDeathParticles(enemy, this.rng);
         for (let index = 0; index < particles.length && index < particleSlots; index += 1) {
           this.state.particles.push(particles[index]);
+        }
+
+        // 2g: Type-specific death particles
+        if (enemy.type === 'boss') {
+          // Shockwave: add a telegraph ring
+          this.state.telegraphs.push({
+            id: `shockwave-${Date.now()}`,
+            position: { ...enemy.position },
+            angle: 0,
+            width: 0,
+            length: 220, // radius
+            life: 0.45,
+            maxLife: 0.45,
+            kind: 'ring',
+            color: '#ff335f'
+          });
+          // Extra 30 particles for boss
+          for (let i = 0; i < 30; i++) {
+            const angle = (i / 30) * Math.PI * 2;
+            if (this.state.particles.length < MAX_PARTICLES) {
+              this.state.particles.push({
+                id: `bd-${i}-${Date.now()}`,
+                position: { ...enemy.position },
+                velocity: { x: Math.cos(angle) * (80 + Math.random() * 120), y: Math.sin(angle) * (80 + Math.random() * 120) },
+                radius: 3 + Math.random() * 4,
+                color: '#ff335f',
+                life: 0.8 + Math.random() * 0.4,
+                maxLife: 1.2
+              });
+            }
+          }
+        } else if (enemy.type === 'tank') {
+          // 8 large hex-like fragments
+          for (let i = 0; i < 8; i++) {
+            const angle = (i / 8) * Math.PI * 2;
+            if (this.state.particles.length < MAX_PARTICLES) {
+              this.state.particles.push({
+                id: `td-${i}-${Date.now()}`,
+                position: { ...enemy.position },
+                velocity: { x: Math.cos(angle) * (40 + Math.random() * 60), y: Math.sin(angle) * (40 + Math.random() * 60) },
+                radius: 5 + Math.random() * 3,
+                color: i % 2 === 0 ? '#a78bfa' : '#94a3b8',
+                life: 0.6 + Math.random() * 0.3,
+                maxLife: 0.9
+              });
+            }
+          }
         }
       }
       this.state.screenShake = Math.max(this.state.screenShake, enemy.type === 'boss' ? 24 : 5);
@@ -851,6 +959,13 @@ export class GameEngine {
       this.state.upgradeChoices = createUpgradeChoices(this.state.player, this.state.weapons, this.rng);
       this.state.phase = 'levelUp';
       this.state.screenShake = 8;
+
+      // 2e: Level-up time-slow effect
+      this.state.timeScale = 0.35; // brief slow-mo
+
+      // 2e: Spawn particle burst on level-up (20 cyan particles)
+      this.spawnLevelUpBurst();
+
       break;
     }
   }
@@ -899,6 +1014,68 @@ export class GameEngine {
       maxLife: 0.55,
       color
     };
+  }
+
+  // 2a: Spawn streak milestone text
+  private spawnStreakText(text: string, color: string): void {
+    const damageText: DamageText = {
+      id: `streak-${this.state.elapsed}-${this.rng()}`,
+      position: { x: this.state.player.position.x, y: this.state.player.position.y - 80 },
+      velocity: { x: 0, y: -120 },
+      amount: 0,
+      life: 1.2,
+      maxLife: 1.2,
+      color,
+      text
+    };
+    this.pushDamageText(damageText);
+  }
+
+  // 2e: Spawn level-up particle burst
+  private spawnLevelUpBurst(): void {
+    const particleCount = 20;
+    const slots = MAX_PARTICLES - this.state.particles.length;
+
+    for (let i = 0; i < Math.min(slots, particleCount); i++) {
+      const angle = (i / particleCount) * Math.PI * 2;
+      const speed = 200 + Math.random() * 150;
+      this.state.particles.push({
+        id: `levelup-${this.state.elapsed}-${i}`,
+        position: { ...this.state.player.position },
+        velocity: {
+          x: Math.cos(angle) * speed,
+          y: Math.sin(angle) * speed - 50  // upward bias for fountain effect
+        },
+        radius: 3 + Math.random() * 2,
+        color: '#5eead4',  // cyan
+        life: 0.7,
+        maxLife: 0.7
+      });
+    }
+  }
+
+  // 2h: Spawn muzzle flash
+  private spawnMuzzleFlash(weapon: Weapon): void {
+    const flashColors: Record<string, string> = {
+      'magic-bolt': '#5eead4',
+      'piercing-arrow': '#ffd166',
+      'area-pulse': '#a78bfa'
+    };
+    const fc = flashColors[weapon.id] ?? '#ffffff';
+    const slots = MAX_PARTICLES - this.state.particles.length;
+
+    for (let f = 0; f < Math.min(slots, 3); f++) {
+      const angle = Math.random() * Math.PI * 2;
+      this.state.particles.push({
+        id: `mf-${weapon.id}-${f}-${Date.now()}`,
+        position: { ...this.state.player.position },
+        velocity: { x: Math.cos(angle) * 60, y: Math.sin(angle) * 60 },
+        radius: 2,
+        color: fc,
+        life: 0.08,
+        maxLife: 0.08
+      });
+    }
   }
 
   private getViewport(padding = 0): Viewport {
@@ -1843,7 +2020,48 @@ export class GameEngine {
       } else {
         ctx.shadowBlur = 0;
       }
-      ctx.fillText(String(text.amount), text.position.x, text.position.y);
+      // Draw text if provided, otherwise draw amount (2a for streak text)
+      const displayText = text.text !== undefined ? text.text : String(text.amount);
+      ctx.fillText(displayText, text.position.x, text.position.y);
+      ctx.restore();
+    }
+  }
+
+  // 2d: Draw boss spawn cinematic
+  private drawBossCinematic(ctx: CanvasRenderingContext2D, timer: number): void {
+    if (timer > 1.9) {
+      // Draw black letterbox bars (top/bottom 10% of canvas height)
+      const barHeight = this.viewSize.height * 0.1;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, this.viewSize.width, barHeight);
+      ctx.fillRect(0, this.viewSize.height - barHeight, this.viewSize.width, barHeight);
+
+      // Fade in over the first 0.2s (timer from 2.5 to 2.3)
+      const fadeProgress = (2.5 - timer) / 0.2;
+      const alpha = Math.min(1, Math.max(0, fadeProgress));
+
+      // Draw centered red glowing text "NIGHT LICH AWAKENS" in large font
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = 'bold 48px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ff335f';
+      if (!this.fastRender) {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ff335f';
+      }
+      ctx.fillText('NIGHT LICH AWAKENS', this.viewSize.width / 2, this.viewSize.height / 2);
+      ctx.restore();
+    }
+
+    // Fade out everything as timer decreases from 1.9 to 0
+    if (timer < 1.9) {
+      const opacity = timer / 1.9;
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
       ctx.restore();
     }
   }
@@ -1855,6 +2073,22 @@ export class GameEngine {
     gradient.addColorStop(1, 'rgba(0,0,0,0.40)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
+
+    // 2f: Low HP canvas vignette
+    const hp = this.state.player.health / this.state.player.maxHealth;
+    if (hp < 0.25) {
+      const intensity = (0.25 - hp) / 0.25;
+      const pulse = 0.5 + 0.5 * Math.sin(this.state.elapsed * 6);
+      const alpha = intensity * pulse * 0.35;
+      const grad = ctx.createRadialGradient(
+        ctx.canvas.width / 2, ctx.canvas.height / 2, ctx.canvas.height * 0.3,
+        ctx.canvas.width / 2, ctx.canvas.height / 2, ctx.canvas.height * 0.85
+      );
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, `rgba(255,51,95,${alpha})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
   }
 
   private drawRadialGlow(ctx: CanvasRenderingContext2D, innerR: number, outerR: number, innerColor: string, outerColor = 'rgba(0,0,0,0)'): void {
