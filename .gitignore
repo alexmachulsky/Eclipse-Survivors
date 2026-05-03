@@ -14,7 +14,10 @@ output/playwright/
 # AI agent / model config files and directories
 .codex
 .claude/
-.github/
+.github/instructions/
+.github/prompts/
+.github/agents/
+.github/hooks/
 docs/
 
 # Playwright MCP session artifacts
