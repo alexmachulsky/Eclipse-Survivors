@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameSnapshot } from '../game/GameEngine';
 import type { PlayerRuntime, Weapon } from '../game/types';
+import { loadRunHistory, type RunHistory } from '../game/persistence';
 import { WeaponTile } from './Hud';
 
 interface MenuProps {
@@ -51,6 +52,15 @@ function useCountUp(target: number, duration = 700): number {
 }
 
 export function MainMenu({ onStart, onLanStart }: MenuProps) {
+  const [history, setHistory] = useState<RunHistory | null>(null);
+
+  useEffect(() => {
+    setHistory(loadRunHistory());
+  }, []);
+
+  const best = history?.best ?? null;
+  const last = history?.last ?? null;
+
   return (
     <div className="overlay overlay--menu">
       <div className="panel menu-panel">
@@ -59,8 +69,23 @@ export function MainMenu({ onStart, onLanStart }: MenuProps) {
         <p className="menu-copy">
           Survive the eclipse arena, gather power, and break the final threat.
         </p>
+        {best && (
+          <div className="menu-stats-banner">
+            <span>Best: {formatTime(best.timeSurvived)}</span>
+            <span className="menu-stats-sep">·</span>
+            <span>{best.kills} kills</span>
+            <span className="menu-stats-sep">·</span>
+            <span>lv.{best.level}</span>
+          </div>
+        )}
+        {last && (
+          <div className="menu-last-run">
+            Last: {formatTime(last.timeSurvived)} · lv.{last.level} · {last.kills} kills
+            {last.weaponPath.length > 0 && ` · ${last.weaponPath.slice(0, 3).join(' → ')}`}
+          </div>
+        )}
         <div className="button-row">
-          <button className="primary-button" type="button" onClick={onStart}>
+          <button className="primary-button btn--primary-large" type="button" onClick={onStart}>
             Solo
           </button>
           <button className="secondary-button" type="button" onClick={onLanStart}>
@@ -166,11 +191,27 @@ function StatCell({ label, value, isTime = false }: { label: string; value: numb
 
 export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps) {
   const { stats } = snapshot;
+  const history = loadRunHistory();
+  const isNewRecord = history.best && (
+    stats.timeSurvived > history.best.timeSurvived ||
+    stats.kills > history.best.kills ||
+    stats.level > history.best.level
+  );
+
+  const weaponPath = snapshot.upgradeHistory
+    .filter(t => ['Magic Bolt', 'Astral Orbit', 'Area Pulse', 'Piercing Arrow',
+                   'Starfall Lance', 'Gravitic Halo', 'Supernova Bloom', 'Comet Volley']
+              .some(w => t.includes(w)));
+
+  const panelClassname = `panel end-panel ${victory ? 'end-panel--victory' : 'end-panel--defeat'}`;
+  const headerText = victory ? 'The eclipse breaks' : 'THE ECLIPSE CLAIMS YOU';
+
   return (
     <div className="overlay">
-      <div className={`panel end-panel ${victory ? 'victory' : ''}`}>
+      <div className={panelClassname}>
+        {isNewRecord && <div className="record-badge">★ NEW RECORD</div>}
         <p className="eyebrow">{victory ? 'Victory' : 'Game Over'}</p>
-        <h2>{victory ? 'The eclipse breaks' : 'The arena claims you'}</h2>
+        <h2>{headerText}</h2>
         <dl className="stats-grid">
           <StatCell label="Time" value={stats.timeSurvived} isTime />
           <StatCell label="Defeated" value={stats.kills} />
@@ -178,9 +219,29 @@ export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps
           <StatCell label="Upgrades" value={stats.upgradesCollected} />
           <StatCell label="Damage" value={Math.round(stats.damageDealt)} />
         </dl>
+        {weaponPath.length > 0 && (
+          <div className="weapon-path">
+            {weaponPath.slice(0, 6).join(' → ')}
+          </div>
+        )}
         <button className="primary-button" type="button" onClick={onRestart}>
           New Run
         </button>
+        {victory && (
+          <div className="victory-confetti">
+            {Array.from({ length: 20 }).map((_, idx) => (
+              <span
+                key={idx}
+                style={{
+                  left: `${5 + (idx % 20) * 5}%`,
+                  animationDuration: `${1.5 + (idx % 15) * 0.1}s`,
+                  animationDelay: `${(idx % 20) * 0.1}s`,
+                  backgroundColor: idx % 4 === 0 ? '#ffd166' : idx % 4 === 1 ? '#ff5edb' : '#5eead4',
+                }}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
