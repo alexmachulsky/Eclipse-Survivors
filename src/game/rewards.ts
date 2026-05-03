@@ -24,7 +24,9 @@ function createWeaponChoices(weapons: Weapon[]): UpgradeOption[] {
       title: weapon.unlocked ? `${weapon.name} II+` : `Unlock ${weapon.name}`,
       description: weapon.unlocked ? `Increase ${weapon.name} power and uptime` : `Add ${weapon.name} to your arsenal`,
       kind: 'weapon',
-      weaponId: weapon.id
+      weaponId: weapon.id,
+      currentWeaponLevel: weapon.level,
+      rarity: 'rare'
     }));
 }
 
@@ -39,7 +41,8 @@ function createPassiveChoices(player: Player): UpgradeOption[] {
         title: currentLevel > 0 ? `${passive.name} ${currentLevel + 1}` : passive.name,
         description: passive.description,
         kind: 'passive',
-        passiveId: passive.id
+        passiveId: passive.id,
+        rarity: 'common'
       };
     });
 }
@@ -65,11 +68,22 @@ function createEvolutionOption(evolutionId: EvolutionId): UpgradeOption {
     kind: 'evolution',
     weaponId: evolution.weaponId,
     passiveId: evolution.passiveId,
-    evolutionId: evolution.id
+    evolutionId: evolution.id,
+    rarity: 'epic'
   };
 }
 
 export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () => number): UpgradeOption[] {
+  const statDeltaMap: Record<string, string> = {
+    damage: '+18% damage',
+    attackRate: '+14% attack speed',
+    moveSpeed: '+10% move speed',
+    maxHealth: '+24 max HP',
+    pickupRadius: '+28 pickup radius',
+    area: '+18% area',
+    projectileSpeed: '+18% proj. speed',
+  };
+
   const weaponChoices = createWeaponChoices(weapons);
   const passiveChoices = createPassiveChoices(player);
   const choices: UpgradeOption[] = [];
@@ -77,8 +91,14 @@ export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () 
   addUnique(choices, pickOne(weaponChoices, rng));
   addUnique(choices, pickOne(passiveChoices, rng));
 
+  const statChoices = STAT_UPGRADES.map((choice) => ({
+    ...choice,
+    statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
+    rarity: 'common' as const
+  }));
+
   const pool = [
-    ...STAT_UPGRADES,
+    ...statChoices,
     ...weaponChoices,
     ...passiveChoices
   ].filter((choice) => !choices.some((selected) => selected.id === choice.id));
@@ -93,6 +113,16 @@ export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () 
 }
 
 export function createChestRewardChoices(player: Player, weapons: Weapon[], rng: () => number): UpgradeOption[] {
+  const statDeltaMap: Record<string, string> = {
+    damage: '+24% damage',
+    attackRate: '+14% attack speed',
+    moveSpeed: '+10% move speed',
+    maxHealth: '+24 max HP',
+    pickupRadius: '+28 pickup radius',
+    area: '+18% area',
+    projectileSpeed: '+18% proj. speed',
+  };
+
   const choices: UpgradeOption[] = [];
   const eligibleEvolution = getEligibleEvolutions(player, weapons)[0];
 
@@ -100,8 +130,14 @@ export function createChestRewardChoices(player: Player, weapons: Weapon[], rng:
     choices.push(createEvolutionOption(eligibleEvolution.id));
   }
 
+  const rareStatChoices = RARE_STAT_UPGRADES.map((choice) => ({
+    ...choice,
+    statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
+    rarity: 'rare' as const
+  }));
+
   const pool = [
-    ...RARE_STAT_UPGRADES,
+    ...rareStatChoices,
     ...createWeaponChoices(weapons),
     ...createPassiveChoices(player)
   ].filter((choice) => !choices.some((selected) => selected.id === choice.id));

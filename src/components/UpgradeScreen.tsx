@@ -21,9 +21,13 @@ function BoonCard({ choice, index, onChoose }: { choice: UpgradeOption; index: n
   const currentLevel = isWeapon && choice.weaponId ? 1 : 0;
   const tag = choice.kind === 'evolution' ? 'Evolution' : choice.kind === 'passive' ? 'Passive' : isWeapon ? 'Boon' : 'Stat';
 
+  const kindClass = choice.kind === 'evolution' ? 'evolution' : isWeapon ? 'weapon' : choice.kind === 'passive' ? 'passive' : 'stat';
+  const rarityClass = choice.rarity ? `card--${choice.rarity}` : '';
+  const evolutionClass = choice.kind === 'evolution' ? 'card--evolution' : '';
+
   return (
     <button
-      className={`upgrade-card upgrade-card--${choice.kind === 'evolution' ? 'evolution' : isWeapon ? 'weapon' : choice.kind === 'passive' ? 'passive' : 'stat'}`}
+      className={`upgrade-card upgrade-card--${kindClass} ${rarityClass} ${evolutionClass}`.trim()}
       style={{ '--idx': index } as React.CSSProperties}
       type="button"
       onClick={() => onChoose(choice.id)}
@@ -37,7 +41,13 @@ function BoonCard({ choice, index, onChoose }: { choice: UpgradeOption; index: n
       )}
 
       <strong className="boon-title">{choice.title}</strong>
+      {choice.kind === 'weapon' && choice.currentWeaponLevel !== undefined && (
+        <div className="upgrade-card__level">lv.{choice.currentWeaponLevel} → {choice.currentWeaponLevel + 1}</div>
+      )}
       <small className="boon-desc">{choice.description}</small>
+      {choice.statDelta && (
+        <div className="upgrade-card__delta">{choice.statDelta}</div>
+      )}
 
       {isWeapon && (
         <div className="boon-pips">
