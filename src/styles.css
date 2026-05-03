@@ -958,3 +958,66 @@ h2 {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ── Tooltips ── */
+.tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-panel {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  background: rgba(10,8,24,0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(94,234,212,0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+  z-index: 100;
+  pointer-events: none;
+  white-space: normal;
+}
+
+.tooltip-panel strong {
+  display: block;
+  color: #ffd166;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+}
+
+.tooltip-wrap:hover .tooltip-panel {
+  display: block;
+}
+
+/* ── Act banner ── */
+.act-banner {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10,8,24,0.9);
+  border: 1px solid rgba(94,234,212,0.3);
+  border-radius: 8px;
+  padding: 8px 24px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #5eead4;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  z-index: 50;
+  animation: act-slide-in 0.4s ease-out;
+  pointer-events: none;
+}
+
+@keyframes act-slide-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
