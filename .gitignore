@@ -1,11 +1,17 @@
 node_modules/
 dist/
+dist-server/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
 .playwright-cli/
 output/playwright/
 .worktrees/
+test-results/
+playwright-report/
+coverage/
+.env
+.env.*
 
 # Markdown docs — only README.md is kept in the repo
 *.md
@@ -25,3 +31,4 @@ docs/
 
 # Loose screenshot artifacts
 *.png
+*.log

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.server.json && vite build",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.server.json && vite build && npm run build:server",
+    "build:server": "vite build --ssr server/index.ts --outDir dist-server --emptyOutDir",
     "start:server": "node --import tsx server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest"

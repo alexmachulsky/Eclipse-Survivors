@@ -119,12 +119,11 @@ export default function App() {
       return;
     }
 
-    const sessionToken = window.sessionStorage.getItem('survival-lan-session') ?? crypto.randomUUID();
-    const name = window.sessionStorage.getItem('survival-lan-name') ?? `Player ${sessionToken.slice(0, 4)}`;
-    window.sessionStorage.setItem('survival-lan-session', sessionToken);
+    const reconnectToken = window.sessionStorage.getItem('survival-lan-session') ?? undefined;
+    const name = window.sessionStorage.getItem('survival-lan-name') ?? `Player ${crypto.randomUUID().slice(0, 4)}`;
     window.sessionStorage.setItem('survival-lan-name', name);
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${protocol}//${window.location.host}/ws?session=${encodeURIComponent(sessionToken)}&name=${encodeURIComponent(name)}`);
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
     socketRef.current = socket;
     setMode('lan');
@@ -132,13 +131,14 @@ export default function App() {
 
     socket.addEventListener('open', () => {
       setConnectionStatus(`Connected at ${window.location.origin}`);
+      socket.send(JSON.stringify({ type: 'hello', name, reconnectToken }));
     });
 
     socket.addEventListener('message', (event) => {
-      const message = JSON.parse(event.data) as ServerSnapshot | { type: 'welcome'; sessionToken: string } | { type: 'error'; message: string };
+      const message = JSON.parse(event.data) as ServerSnapshot | { type: 'welcome'; reconnectToken: string } | { type: 'error'; message: string };
 
       if (message.type === 'welcome') {
-        window.sessionStorage.setItem('survival-lan-session', message.sessionToken);
+        window.sessionStorage.setItem('survival-lan-session', message.reconnectToken);
       } else if (message.type === 'snapshot') {
         setLanSnapshot(message);
       } else if (message.type === 'error') {

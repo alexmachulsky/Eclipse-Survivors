@@ -5,10 +5,17 @@ services:
       target: runtime
     container_name: survival-roguelike
     ports:
-      - "5176:80"
+      - "5176:8080"
     depends_on:
       - multiplayer
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   multiplayer:
     build:
@@ -18,3 +25,8 @@ services:
     expose:
       - "3001"
     restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
