@@ -93,7 +93,7 @@ export default function App() {
   useEffect(() => {
     if ((snapshot.phase === 'gameOver' || snapshot.phase === 'victory') && !savedRef.current) {
       savedRef.current = true;
-      const weaponTitles = ['Magic Bolt', 'Orbit Blades', 'Area Pulse', 'Piercing Arrow', 'Starfall'];
+      const weaponTitles = ['Magic Bolt', 'Astral Orbit', 'Area Pulse', 'Piercing Arrow', 'Starfall Lance', 'Gravitic Halo', 'Supernova Bloom', 'Comet Volley'];
       saveRunRecord({
         timeSurvived: snapshot.stats.timeSurvived,
         kills: snapshot.stats.kills,
