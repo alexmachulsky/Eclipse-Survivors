@@ -59,7 +59,14 @@ function createLocalSnapshot(serverSnapshot: ServerSnapshot | null): GameSnapsho
     actLabel: getActLabel(state.elapsed),
     activeObjective: state.objectives.find((objective) => objective.state === 'active') ?? null,
     enemyCurseStacks: state.enemyCurseStacks,
-    pendingChestChoices: runtime?.pendingChestChoices ?? []
+    pendingChestChoices: runtime?.pendingChestChoices ?? [],
+    killStreak: state.killStreak,
+    weaponDamageDealt: state.weaponDamageDealt,
+    upgradeHistory: state.upgradeHistory,
+    bossApproachingIn: !state.bossSpawned && (300 - state.elapsed) <= 30
+      ? Math.ceil(300 - state.elapsed)
+      : null,
+    healthRatio: runtime?.player.health ? runtime.player.health / runtime.player.maxHealth : 0
   };
 }
 

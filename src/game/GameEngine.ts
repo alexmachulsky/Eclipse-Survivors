@@ -40,6 +40,11 @@ export interface GameSnapshot {
   activeObjective: GameState['objectives'][number] | null;
   enemyCurseStacks: number;
   pendingChestChoices: UpgradeOption[];
+  killStreak: number;
+  weaponDamageDealt: Record<string, number>;
+  upgradeHistory: string[];
+  bossApproachingIn: number | null;  // computed: 300 - elapsed when ≤30s && !bossSpawned
+  healthRatio: number;               // health/maxHealth convenience field for HUD
 }
 
 const MIN_SPAWN_INTERVAL = 0.26;
@@ -310,7 +315,14 @@ export class GameEngine {
       actLabel: getActLabel(this.state.elapsed),
       activeObjective: this.state.objectives.find((objective) => objective.state === 'active') ?? null,
       enemyCurseStacks: this.state.enemyCurseStacks,
-      pendingChestChoices: this.state.pendingChestChoices
+      pendingChestChoices: this.state.pendingChestChoices,
+      killStreak: this.state.killStreak,
+      weaponDamageDealt: this.state.weaponDamageDealt,
+      upgradeHistory: this.state.upgradeHistory,
+      bossApproachingIn: !this.state.bossSpawned && (300 - this.state.elapsed) <= 30
+        ? Math.ceil(300 - this.state.elapsed)
+        : null,
+      healthRatio: this.state.player.health / this.state.player.maxHealth
     };
   }
 

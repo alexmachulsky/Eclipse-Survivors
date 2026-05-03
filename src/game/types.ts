@@ -113,6 +113,9 @@ export interface UpgradeOption {
   weaponId?: WeaponId;
   passiveId?: PassiveId;
   evolutionId?: EvolutionId;
+  currentWeaponLevel?: number;   // populated for weapon upgrades so UI can show "lv.2 → 3"
+  statDelta?: string;            // human-readable delta e.g. "+22% ATK" for stat/passive upgrades
+  rarity?: 'common' | 'rare' | 'epic';
 }
 
 export interface DamageText {
@@ -233,6 +236,12 @@ export interface GameState {
   stats: GameStats;
   orbitAngle: number;
   screenShake: number;
+  killStreak: number;            // current consecutive kill count
+  killStreakExpiry: number;      // elapsed time when streak resets (streak resets after 3s)
+  weaponDamageDealt: Record<string, number>;  // weapon id → total damage dealt this run
+  upgradeHistory: string[];      // ordered list of upgrade titles collected
+  cinematicState: null | { type: 'boss-spawn'; timer: number };
+  timeScale: number;             // 1.0 normally; set to 0.35 briefly on level-up for time-slow feel
 }
 
 export interface PlayerRuntime {
