@@ -1308,14 +1308,27 @@ export class GameEngine {
 
       const alpha = clamp(telegraph.life / telegraph.maxLife, 0, 1);
       ctx.save();
-      ctx.translate(telegraph.position.x, telegraph.position.y);
-      ctx.rotate(telegraph.angle);
       ctx.globalAlpha = alpha * 0.45;
-      ctx.fillStyle = telegraph.color;
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.rect(0, -telegraph.width / 2, telegraph.length, telegraph.width);
-      ctx.fill();
+
+      if (telegraph.kind === 'ring') {
+        ctx.translate(telegraph.position.x, telegraph.position.y);
+        ctx.strokeStyle = telegraph.color;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = telegraph.color;
+        ctx.shadowBlur = this.glowScale > 0 ? 12 : 0;
+        ctx.beginPath();
+        ctx.arc(0, 0, telegraph.length * (1 - telegraph.life / telegraph.maxLife + 0.1), 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.translate(telegraph.position.x, telegraph.position.y);
+        ctx.rotate(telegraph.angle);
+        ctx.fillStyle = telegraph.color;
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.rect(0, -telegraph.width / 2, telegraph.length, telegraph.width);
+        ctx.fill();
+      }
+
       ctx.restore();
     }
   }
