@@ -5,6 +5,7 @@ import { chooseEnemyType, getBossSpawn, spawnEnemyOutsideViewport, updateEnemies
 import { createDeathParticles, createXpGem, updateParticles } from './particles';
 import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
+import { preloadRenderAssets, type RenderAssets, type SpriteAsset } from './renderAssets';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
 import {
   collectRunDirectorEvents,
@@ -18,7 +19,7 @@ import { SpatialGrid } from './spatialGrid';
 import { createInitialGameState } from './state';
 import { getXpThreshold } from './upgrades';
 import { createAreaPulse, createStarfallSparks, findNearestEnemy, fireWeaponAtTarget, getUnlockedWeapons } from './weapons';
-import type { DamageText, Enemy, GamePhase, GameState, HealthPickup, InputState, Projectile, RewardChest, Telegraph, UpgradeOption, Vector, Viewport, Weapon } from './types';
+import type { DamageText, Enemy, GamePhase, GameState, HealthPickup, InputState, MultiplayerGameState, PlayerRuntime, Projectile, RewardChest, Telegraph, UpgradeOption, Vector, Viewport, Weapon } from './types';
 
 export interface GameSnapshot {
   phase: GamePhase;
@@ -70,6 +71,7 @@ export class GameEngine {
   private bossSummonTimer = 9;
   private rng: () => number;
   private cosmic: CosmicLayers | null = null;
+  private renderAssets: RenderAssets | null = null;
   private readonly enemyGrid = new SpatialGrid(96);
   private glowScale = 1;
   private performanceMode = false;
@@ -156,6 +158,27 @@ export class GameEngine {
 
   preloadRenderAssets(): void {
     this.ensureCosmic();
+    this.renderAssets = preloadRenderAssets();
+  }
+
+  loadMultiplayerState(state: MultiplayerGameState, localPlayerId: string): void {
+    const localRuntime = state.players.find((runtime) => runtime.id === localPlayerId) ?? state.players[0];
+
+    if (!localRuntime) {
+      return;
+    }
+
+    this.state = {
+      ...state,
+      player: localRuntime.player,
+      weapons: localRuntime.weapons,
+      upgradeChoices: localRuntime.upgradeChoices,
+      pendingChestChoices: localRuntime.pendingChestChoices,
+      level: localRuntime.level,
+      xp: localRuntime.xp,
+      xpToNext: localRuntime.xpToNext,
+      stats: localRuntime.stats
+    };
   }
 
   setViewSize(width: number, height: number): void {
@@ -231,9 +254,10 @@ export class GameEngine {
   render(ctx: CanvasRenderingContext2D): void {
     const viewport = this.getViewport();
     const shake = this.state.screenShake > 0 ? this.state.screenShake : 0;
+    const shakePhase = this.state.elapsed * 47.23 + shake * 0.113;
     const shakeOffset = {
-      x: (this.rng() - 0.5) * shake,
-      y: (this.rng() - 0.5) * shake
+      x: Math.sin(shakePhase) * shake * 0.45,
+      y: Math.cos(shakePhase * 1.37) * shake * 0.45
     };
 
     ctx.clearRect(0, 0, this.viewSize.width, this.viewSize.height);
@@ -967,6 +991,18 @@ export class GameEngine {
     return this.cosmic;
   }
 
+  private ensureRenderAssets(): RenderAssets {
+    if (!this.renderAssets) {
+      this.renderAssets = preloadRenderAssets();
+    }
+
+    return this.renderAssets;
+  }
+
+  private drawSprite(ctx: CanvasRenderingContext2D, sprite: SpriteAsset, x: number, y: number, width: number, height = width): void {
+    ctx.drawImage(sprite.image, x - width / 2, y - height / 2, width, height);
+  }
+
   private drawBackdrop(ctx: CanvasRenderingContext2D): void {
     const layers = this.ensureCosmic();
     const viewport = this.getViewport();
@@ -1002,6 +1038,8 @@ export class GameEngine {
   }
 
   private drawGems(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const sprite = this.ensureRenderAssets().gem;
+
     for (const gem of this.state.gems) {
       if (!this.isCircleVisible(gem.position, gem.radius, viewport, 18)) {
         continue;
@@ -1009,12 +1047,8 @@ export class GameEngine {
 
       const pulse = Math.sin(gem.life * 8) * 0.18 + 1;
       ctx.save();
-      ctx.translate(gem.position.x, gem.position.y);
-      ctx.rotate(Math.PI / 4);
-      this.setGlow(ctx, 16, gem.color);
-      ctx.fillStyle = gem.color;
       ctx.globalAlpha = 0.85;
-      ctx.fillRect(-gem.radius * pulse, -gem.radius * pulse, gem.radius * 2 * pulse, gem.radius * 2 * pulse);
+      this.drawSprite(ctx, sprite, gem.position.x, gem.position.y, gem.radius * 3.2 * pulse);
       ctx.restore();
     }
   }
@@ -1031,33 +1065,8 @@ export class GameEngine {
 
   private drawHealthPickup(ctx: CanvasRenderingContext2D, pickup: HealthPickup): void {
     const pulse = 1 + Math.sin((this.state.elapsed + pickup.life) * 6) * 0.08;
-    const r = pickup.radius * pulse;
-
-    ctx.save();
-    ctx.translate(pickup.position.x, pickup.position.y);
-    this.setGlow(ctx, 16, pickup.color);
-    ctx.fillStyle = pickup.color;
-    ctx.strokeStyle = 'rgba(255,255,255,0.78)';
-    ctx.lineWidth = 1.5;
-
-    ctx.beginPath();
-    ctx.moveTo(0, r * 0.72);
-    ctx.bezierCurveTo(-r * 1.15, -r * 0.15, -r * 0.72, -r * 0.95, 0, -r * 0.35);
-    ctx.bezierCurveTo(r * 0.72, -r * 0.95, r * 1.15, -r * 0.15, 0, r * 0.72);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#fff7ed';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.35, 0);
-    ctx.lineTo(r * 0.35, 0);
-    ctx.moveTo(0, -r * 0.35);
-    ctx.lineTo(0, r * 0.35);
-    ctx.stroke();
-    ctx.restore();
+    const sprite = this.ensureRenderAssets().healthPickup;
+    this.drawSprite(ctx, sprite, pickup.position.x, pickup.position.y, pickup.radius * 4.1 * pulse);
   }
 
   private drawObjectives(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
@@ -1089,36 +1098,16 @@ export class GameEngine {
   }
 
   private drawRewardChests(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const assets = this.ensureRenderAssets();
+
     for (const chest of this.state.rewardChests) {
       if (!this.isCircleVisible(chest.position, chest.radius, viewport, 24)) {
         continue;
       }
 
       const pulse = 1 + Math.sin((this.state.elapsed + chest.life) * 7) * 0.08;
-      const r = chest.radius * pulse;
-
-      ctx.save();
-      ctx.translate(chest.position.x, chest.position.y);
-      this.setGlow(ctx, 20, '#ffd166');
-      ctx.fillStyle = chest.source === 'elite' ? '#ffd166' : '#5eead4';
-      ctx.strokeStyle = '#fff3b0';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, -r);
-      ctx.lineTo(r, 0);
-      ctx.lineTo(0, r);
-      ctx.lineTo(-r, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(5,7,17,0.72)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(-r * 0.55, 0);
-      ctx.lineTo(r * 0.55, 0);
-      ctx.stroke();
-      ctx.restore();
+      const sprite = chest.source === 'elite' ? assets.rewardChest.elite : assets.rewardChest.objective;
+      this.drawSprite(ctx, sprite, chest.position.x, chest.position.y, chest.radius * 4 * pulse);
     }
   }
 
@@ -1143,6 +1132,8 @@ export class GameEngine {
   }
 
   private drawProjectiles(ctx: CanvasRenderingContext2D, projectiles: Projectile[], viewport: Viewport): void {
+    const sprites = this.ensureRenderAssets().projectiles;
+
     for (const projectile of projectiles) {
       if (!this.isCircleVisible(projectile.position, projectile.radius, viewport, projectile.kind === 'arrow' ? 30 : 20)) {
         continue;
@@ -1150,30 +1141,30 @@ export class GameEngine {
 
       ctx.save();
       ctx.globalAlpha = projectile.alpha ?? 1;
-      this.setGlow(ctx, projectile.kind === 'pulse' ? 24 : 14, projectile.color);
-      ctx.strokeStyle = projectile.color;
-      ctx.fillStyle = projectile.color;
 
       if (projectile.kind === 'pulse') {
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(projectile.position.x, projectile.position.y, projectile.radius, 0, Math.PI * 2);
-        ctx.stroke();
+        this.drawSprite(ctx, sprites.pulse, projectile.position.x, projectile.position.y, projectile.radius * 2.25);
       } else if (projectile.kind === 'arrow') {
         const angle = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+        const speed = Math.hypot(projectile.velocity.x, projectile.velocity.y) || 1;
+
+        if (!this.fastRender) {
+          ctx.globalAlpha = (projectile.alpha ?? 1) * 0.32;
+          ctx.strokeStyle = projectile.color;
+          ctx.lineWidth = Math.max(2, projectile.radius * 0.45);
+          ctx.beginPath();
+          ctx.moveTo(projectile.position.x - (projectile.velocity.x / speed) * projectile.radius * 4.2, projectile.position.y - (projectile.velocity.y / speed) * projectile.radius * 4.2);
+          ctx.lineTo(projectile.position.x, projectile.position.y);
+          ctx.stroke();
+          ctx.globalAlpha = projectile.alpha ?? 1;
+        }
+
         ctx.translate(projectile.position.x, projectile.position.y);
         ctx.rotate(angle);
-        ctx.beginPath();
-        ctx.moveTo(16, 0);
-        ctx.lineTo(-12, -5);
-        ctx.lineTo(-7, 0);
-        ctx.lineTo(-12, 5);
-        ctx.closePath();
-        ctx.fill();
+        this.drawSprite(ctx, sprites.arrow, 0, 0, projectile.radius * 7.2, projectile.radius * 4.2);
       } else {
-        ctx.beginPath();
-        ctx.arc(projectile.position.x, projectile.position.y, projectile.radius, 0, Math.PI * 2);
-        ctx.fill();
+        const sprite = projectile.kind === 'ranged' ? sprites.ranged : sprites.bolt;
+        this.drawSprite(ctx, sprite, projectile.position.x, projectile.position.y, projectile.radius * 5);
       }
 
       ctx.restore();
@@ -1181,6 +1172,8 @@ export class GameEngine {
   }
 
   private drawEnemies(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const assets = this.ensureRenderAssets();
+
     for (const enemy of this.state.enemies) {
       if (!this.isCircleVisible(enemy.position, enemy.radius, viewport, enemy.type === 'boss' ? 80 : 42)) {
         continue;
@@ -1188,17 +1181,45 @@ export class GameEngine {
 
       ctx.save();
       ctx.translate(enemy.position.x, enemy.position.y);
+      this.applyHitSquash(ctx, enemy.hitFlash);
 
-      if (this.fastRender) {
-        this.drawEnemyLite(ctx, enemy);
-      } else {
-        switch (enemy.type) {
-          case 'basic': this.drawBasicEnemy(ctx, enemy); break;
-          case 'fast': this.drawFastEnemy(ctx, enemy); break;
-          case 'tank': this.drawTankEnemy(ctx, enemy); break;
-          case 'ranged': this.drawRangedEnemy(ctx, enemy); break;
-          case 'boss': this.drawBossEnemy(ctx, enemy); break;
+      if (enemy.type === 'ranged') {
+        const charge = clamp(1 - enemy.cooldown / 0.5, 0, 1);
+        if (charge > 0.7) {
+          const jitterPhase = this.state.elapsed * 64 + this.hashId(enemy.id) * 0.13;
+          ctx.translate(Math.sin(jitterPhase) * 0.75, Math.cos(jitterPhase * 1.41) * 0.75);
         }
+      }
+
+      let modelRotation = 0;
+      if (enemy.type === 'fast') {
+        const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+        modelRotation = speed > 1
+          ? Math.atan2(enemy.velocity.y, enemy.velocity.x)
+          : Math.atan2(this.state.player.position.y - enemy.position.y, this.state.player.position.x - enemy.position.x);
+      } else if (enemy.type === 'basic') {
+        modelRotation = Math.atan2(this.state.player.position.y - enemy.position.y, this.state.player.position.x - enemy.position.x);
+      }
+
+      if (modelRotation !== 0) {
+        ctx.rotate(modelRotation);
+      }
+
+      const spriteGroup = assets.enemies[enemy.type];
+      const sprite = this.fastRender ? spriteGroup.lite : enemy.hitFlash > 0 ? spriteGroup.hit : spriteGroup.normal;
+      const scale = enemy.type === 'boss' ? 3.75 : enemy.type === 'tank' ? 3.35 : enemy.type === 'fast' ? 3.8 : 3.25;
+      this.drawSprite(ctx, sprite, 0, 0, enemy.radius * scale);
+
+      if (modelRotation !== 0) {
+        ctx.rotate(-modelRotation);
+      }
+
+      if (!this.fastRender && enemy.type === 'ranged') {
+        this.drawRangedChargeOverlay(ctx, enemy);
+      }
+
+      if (!this.fastRender && enemy.type === 'boss') {
+        this.drawBossRingOverlay(ctx, enemy);
       }
 
       if (enemy.health < enemy.maxHealth || enemy.type === 'boss') {
@@ -1216,6 +1237,61 @@ export class GameEngine {
 
       ctx.restore();
     }
+  }
+
+  private hashId(id: string): number {
+    let hash = 0;
+    for (let index = 0; index < id.length; index += 1) {
+      hash = (hash * 31 + id.charCodeAt(index)) | 0;
+    }
+    return Math.abs(hash);
+  }
+
+  private drawRangedChargeOverlay(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const charge = clamp(1 - enemy.cooldown / 0.5, 0, 1);
+
+    if (charge <= 0) {
+      return;
+    }
+
+    const px = this.state.player.position.x - enemy.position.x;
+    const py = this.state.player.position.y - enemy.position.y;
+    const plen = Math.hypot(px, py) || 1;
+    const coreR = enemy.radius * (0.35 + charge * 0.45);
+
+    ctx.save();
+    ctx.globalAlpha = charge * 0.68;
+    ctx.fillStyle = '#fff3b0';
+    ctx.beginPath();
+    ctx.arc(0, 0, coreR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff3b0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo((px / plen) * enemy.radius * 1.45, (py / plen) * enemy.radius * 1.45);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawBossRingOverlay(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#ffd166';
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 16, t * 1.2, t * 1.2 + Math.PI * 1.1);
+    ctx.stroke();
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ff8aa1';
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 24, -t * 0.85, -t * 0.85 + Math.PI * 0.6);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawEnemyLite(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
@@ -1558,29 +1634,32 @@ export class GameEngine {
   }
 
   private drawOrbitWeapon(ctx: CanvasRenderingContext2D): void {
-    const weapon = this.state.weapons.find((item) => item.id === 'orbit' && item.unlocked);
+    for (const runtime of this.getRenderablePlayers()) {
+      this.drawRuntimeOrbitWeapon(ctx, runtime);
+    }
+  }
+
+  private drawRuntimeOrbitWeapon(ctx: CanvasRenderingContext2D, runtime: PlayerRuntime): void {
+    const weapon = runtime.weapons.find((item) => item.id === 'orbit' && item.unlocked);
 
     if (!weapon) {
       return;
     }
 
+    const sprite = weapon.evolved ? this.ensureRenderAssets().orbit.evolved : this.ensureRenderAssets().orbit.normal;
     const bladeCount = (1 + Math.floor((weapon.level + 1) / 2)) + (weapon.evolved ? 1 : 0);
-    const orbitRadius = (weapon.range + weapon.level * 9) * this.state.player.areaMultiplier * (weapon.evolved ? 1.28 : 1);
+    const orbitRadius = (weapon.range + weapon.level * 9) * runtime.player.areaMultiplier * (weapon.evolved ? 1.28 : 1);
 
     for (let index = 0; index < bladeCount; index += 1) {
       const angle = this.state.orbitAngle + (Math.PI * 2 * index) / bladeCount;
       const position = {
-        x: this.state.player.position.x + Math.cos(angle) * orbitRadius,
-        y: this.state.player.position.y + Math.sin(angle) * orbitRadius
+        x: runtime.player.position.x + Math.cos(angle) * orbitRadius,
+        y: runtime.player.position.y + Math.sin(angle) * orbitRadius
       };
       ctx.save();
       ctx.translate(position.x, position.y);
       ctx.rotate(angle);
-      this.setGlow(ctx, weapon.evolved ? 24 : 18, '#f0abfc');
-      ctx.fillStyle = weapon.evolved ? '#f5d0fe' : '#f0abfc';
-      ctx.beginPath();
-      ctx.ellipse(0, 0, weapon.evolved ? 22 : 17, weapon.evolved ? 9 : 7, 0, 0, Math.PI * 2);
-      ctx.fill();
+      this.drawSprite(ctx, sprite, 0, 0, weapon.evolved ? 58 : 46, weapon.evolved ? 34 : 28);
       ctx.restore();
     }
   }
@@ -1625,68 +1704,52 @@ export class GameEngine {
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D): void {
-    const player = this.state.player;
+    for (const runtime of this.getRenderablePlayers()) {
+      this.drawRuntimePlayer(ctx, runtime);
+    }
+  }
+
+  private getRenderablePlayers(): PlayerRuntime[] {
+    const players = (this.state as GameState & { players?: PlayerRuntime[] }).players;
+
+    if (players) {
+      return players.filter((runtime) => runtime.status !== 'disconnected');
+    }
+
+    return [{
+      id: 'solo',
+      name: 'Player',
+      color: '#5eead4',
+      status: this.state.player.health <= 0 ? 'downed' : 'active',
+      player: this.state.player,
+      weapons: this.state.weapons,
+      level: this.state.level,
+      xp: this.state.xp,
+      xpToNext: this.state.xpToNext,
+      upgradeChoices: this.state.upgradeChoices,
+      pendingChestChoices: this.state.pendingChestChoices,
+      stats: this.state.stats,
+      reviveProgress: 0
+    }];
+  }
+
+  private drawRuntimePlayer(ctx: CanvasRenderingContext2D, runtime: PlayerRuntime): void {
+    const player = runtime.player;
     const r = player.radius;
     const t = this.state.elapsed;
-    const iframes = player.invulnerableTimer > 0;
+    const iframes = player.invulnerableTimer > 0 || runtime.status === 'choosing';
+    const sprite = iframes ? this.ensureRenderAssets().playerHit : this.ensureRenderAssets().player;
 
     ctx.save();
     ctx.translate(player.position.x, player.position.y);
-
-    // Ground shadow blob (before rotate, stays flat)
-    this.drawShadowBlob(ctx, r * 1.05, r * 0.32, r * 0.55, 0.45);
-
     ctx.rotate(player.facingAngle);
-    ctx.globalAlpha = iframes ? 0.88 : 1;
-
-    // Outer halo (radial gradient, no shadowBlur)
-    const haloAlpha = 0.85 + Math.sin(t * 2.4) * 0.15;
-    ctx.save();
-    ctx.globalAlpha = (iframes ? 0.88 : 1) * haloAlpha;
-    this.drawRadialGlow(ctx, r * 0.4, r * 2.4, 'rgba(94,234,212,0.55)', 'rgba(94,234,212,0)');
-    ctx.restore();
-
-    // Mid hull
-    const hullGrad = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
-    hullGrad.addColorStop(0, '#1b2840');
-    hullGrad.addColorStop(0.7, '#122036');
-    hullGrad.addColorStop(1, '#0a1426');
-    ctx.fillStyle = hullGrad;
-    this.setGlow(ctx, 14, '#5eead4');
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#5eead4';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    // Inner core (pulsing)
-    const coreScale = 1 + Math.sin(t * 3) * 0.06;
-    const coreR = r * 0.5 * coreScale;
-    ctx.shadowBlur = 0;
-    this.drawRadialGlow(ctx, 0, coreR, '#d3fff5', 'rgba(94,234,212,0)');
-
-    // Directional prow (replaces flat triangle)
-    const prowGrad = ctx.createLinearGradient(r * 0.2, 0, r + 12, 0);
-    prowGrad.addColorStop(0, '#ffd166');
-    prowGrad.addColorStop(1, '#fff3b0');
-    ctx.fillStyle = prowGrad;
-    this.setGlow(ctx, 12, '#ffd166');
-    ctx.strokeStyle = 'rgba(255,243,176,0.67)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(r + 12, 0);
-    ctx.lineTo(r * 0.2, -r * 0.55);
-    ctx.lineTo(r * 0.5, 0);
-    ctx.lineTo(r * 0.2, r * 0.55);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    ctx.globalAlpha = runtime.status === 'downed' ? 0.45 : iframes ? 0.88 : 1;
+    this.drawSprite(ctx, sprite, 0, 0, r * 4.2);
 
     // Invulnerability shimmer rings
     if (iframes) {
       const shimmerAlpha = clamp(player.invulnerableTimer / 0.9, 0, 1) * 0.85;
-      ctx.shadowBlur = 10 * this.glowScale;
+      ctx.shadowBlur = this.fastRender ? 0 : 10 * this.glowScale;
 
       ctx.save();
       ctx.rotate(t * 4);
@@ -1711,6 +1774,22 @@ export class GameEngine {
       ctx.restore();
     }
 
+    ctx.rotate(-player.facingAngle);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = runtime.color;
+    ctx.beginPath();
+    ctx.arc(0, -r * 2.65, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (runtime.status === 'downed') {
+      const progress = clamp(runtime.reviveProgress / 3, 0, 1);
+      ctx.strokeStyle = runtime.color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.75, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 
@@ -1723,7 +1802,11 @@ export class GameEngine {
       ctx.save();
       ctx.globalAlpha = clamp(particle.life / particle.maxLife, 0, 1);
       ctx.fillStyle = particle.color;
-      this.setGlow(ctx, 10, particle.color);
+      if (!this.fastRender) {
+        this.setGlow(ctx, 10, particle.color);
+      } else {
+        ctx.shadowBlur = 0;
+      }
       ctx.beginPath();
       ctx.arc(particle.position.x, particle.position.y, particle.radius, 0, Math.PI * 2);
       ctx.fill();
@@ -1743,7 +1826,11 @@ export class GameEngine {
       ctx.save();
       ctx.globalAlpha = clamp(text.life / text.maxLife, 0, 1);
       ctx.fillStyle = text.color;
-      this.setGlow(ctx, 8, text.color);
+      if (!this.fastRender) {
+        this.setGlow(ctx, 8, text.color);
+      } else {
+        ctx.shadowBlur = 0;
+      }
       ctx.fillText(String(text.amount), text.position.x, text.position.y);
       ctx.restore();
     }

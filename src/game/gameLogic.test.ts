@@ -12,11 +12,14 @@ import {
   getEligibleEvolutions
 } from './rewards';
 import { createStartingPlayer, createStartingWeapons } from './state';
-import { createAreaPulse, fireWeaponAtTarget } from './weapons';
+import { createAreaPulse, findNearestEnemy, fireWeaponAtTarget } from './weapons';
 import { resolveProjectileEnemyHit } from './projectiles';
 import { collectRunDirectorEvents, createRunDirectorState, getActLabel, getBossPhase, updateObjectiveProgress } from './runDirector';
 import type { Enemy, ObjectiveState, Projectile, Viewport, Weapon } from './types';
 import { GameEngine } from './GameEngine';
+import { GameSim, findNearestActivePlayer } from './GameSim';
+import { beginFrame, beginRender, beginUpdate, endFrame, endRender, endUpdate, resetPerfForTests, summary } from './perf';
+import { __resetRenderAssetsForTests, getRenderAssetStats, preloadRenderAssets } from './renderAssets';
 
 function installCanvasStub(): { created: () => number; restore: () => void } {
   const originalDocument = globalThis.document;
@@ -31,14 +34,29 @@ function installCanvasStub(): { created: () => number; restore: () => void } {
     shadowColor: '',
     clearRect: () => undefined,
     fillRect: () => undefined,
+    strokeRect: () => undefined,
+    drawImage: () => undefined,
     createRadialGradient: () => gradient,
     createLinearGradient: () => gradient,
     beginPath: () => undefined,
+    closePath: () => undefined,
     arc: () => undefined,
+    ellipse: () => undefined,
+    rect: () => undefined,
+    roundRect: () => undefined,
     fill: () => undefined,
     stroke: () => undefined,
     moveTo: () => undefined,
-    lineTo: () => undefined
+    lineTo: () => undefined,
+    bezierCurveTo: () => undefined,
+    quadraticCurveTo: () => undefined,
+    save: () => undefined,
+    restore: () => undefined,
+    translate: () => undefined,
+    rotate: () => undefined,
+    scale: () => undefined,
+    fillText: () => undefined,
+    setTransform: () => undefined
   };
 
   globalThis.document = {
@@ -61,6 +79,278 @@ function installCanvasStub(): { created: () => number; restore: () => void } {
 }
 
 describe('core game logic', () => {
+  it('targets the nearest active player and ignores choosing or downed players', () => {
+    const sim = new GameSim(() => 0.5);
+    const alpha = sim.addPlayer('Alpha');
+    const beta = sim.addPlayer('Beta');
+    const gamma = sim.addPlayer('Gamma');
+
+    sim.startRun();
+    sim.setPlayerStatus(alpha.id, 'choosing');
+    sim.setPlayerStatus(gamma.id, 'downed');
+    beta.player.position = { x: 900, y: 900 };
+
+    const target = findNearestActivePlayer(sim.getState().players, { x: 880, y: 880 });
+
+    expect(target?.id).toBe(beta.id);
+  });
+
+  it('collects XP gems for only the collecting player', () => {
+    const sim = new GameSim(() => 0.5);
+    const alpha = sim.addPlayer('Alpha');
+    const beta = sim.addPlayer('Beta');
+
+    sim.startRun();
+    alpha.player.position = { x: 100, y: 100 };
+    beta.player.position = { x: 500, y: 500 };
+    sim.getState().gems.push({
+      id: 'gem-test',
+      position: { x: 100, y: 100 },
+      value: alpha.xpToNext,
+      radius: 7,
+      color: '#5eead4',
+      life: 0
+    });
+
+    sim.update(1 / 60);
+
+    expect(alpha.level).toBe(2);
+    expect(alpha.status).toBe('choosing');
+    expect(beta.level).toBe(1);
+    expect(beta.xp).toBe(0);
+  });
+
+  it('opens reward chests for only the opener', () => {
+    const sim = new GameSim(() => 0.5);
+    const alpha = sim.addPlayer('Alpha');
+    const beta = sim.addPlayer('Beta');
+
+    sim.startRun();
+    alpha.player.position = { x: 100, y: 100 };
+    beta.player.position = { x: 500, y: 500 };
+    sim.getState().rewardChests.push({
+      id: 'chest-test',
+      position: { x: 100, y: 100 },
+      radius: 18,
+      source: 'elite',
+      opened: false,
+      life: 0
+    });
+
+    sim.update(1 / 60);
+
+    expect(alpha.status).toBe('choosing');
+    expect(alpha.pendingChestChoices).toHaveLength(3);
+    expect(beta.status).toBe('active');
+    expect(beta.pendingChestChoices).toHaveLength(0);
+  });
+
+  it('keeps choosing players idle, invulnerable, and untargeted while active players continue', () => {
+    const sim = new GameSim(() => 0.5);
+    const alpha = sim.addPlayer('Alpha');
+    const beta = sim.addPlayer('Beta');
+
+    sim.startRun();
+    alpha.player.position = { x: 100, y: 100 };
+    beta.player.position = { x: 300, y: 100 };
+    sim.setPlayerStatus(alpha.id, 'choosing');
+    sim.applyCommand({
+      playerId: alpha.id,
+      moveUp: false,
+      moveDown: false,
+      moveLeft: false,
+      moveRight: true,
+      aimWorldX: 600,
+      aimWorldY: 100,
+      reviveHeld: false
+    });
+    sim.getState().enemies.push({
+      id: 'enemy-test',
+      type: 'basic',
+      rank: 'normal',
+      position: { x: 112, y: 100 },
+      velocity: { x: 0, y: 0 },
+      radius: 16,
+      maxHealth: 20,
+      health: 20,
+      speed: 0,
+      damage: 999,
+      xpValue: 1,
+      color: '#fff',
+      cooldown: 0,
+      hitFlash: 0
+    });
+
+    sim.update(1 / 60);
+
+    expect(alpha.player.position).toEqual({ x: 100, y: 100 });
+    expect(alpha.player.health).toBe(alpha.player.maxHealth);
+    expect(findNearestActivePlayer(sim.getState().players, { x: 100, y: 100 })?.id).toBe(beta.id);
+  });
+
+  it('revives downed players after a nearby active teammate holds revive', () => {
+    const sim = new GameSim(() => 0.5);
+    const alpha = sim.addPlayer('Alpha');
+    const beta = sim.addPlayer('Beta');
+
+    sim.startRun();
+    alpha.status = 'downed';
+    alpha.player.health = 0;
+    alpha.player.position = { x: 100, y: 100 };
+    beta.player.position = { x: 120, y: 100 };
+    sim.applyCommand({
+      playerId: beta.id,
+      moveUp: false,
+      moveDown: false,
+      moveLeft: false,
+      moveRight: false,
+      aimWorldX: 120,
+      aimWorldY: 100,
+      reviveHeld: true
+    });
+
+    sim.update(3.1);
+
+    expect(alpha.status).toBe('active');
+    expect(alpha.player.health).toBeCloseTo(alpha.player.maxHealth * 0.4);
+    expect(alpha.player.invulnerableTimer).toBeGreaterThan(0);
+  });
+
+  it('ends the run only when all connected non-disconnected players are downed', () => {
+    const sim = new GameSim(() => 0.5);
+    const alpha = sim.addPlayer('Alpha');
+    const beta = sim.addPlayer('Beta');
+    const gamma = sim.addPlayer('Gamma');
+
+    sim.startRun();
+    alpha.status = 'downed';
+    alpha.player.health = 0;
+    beta.status = 'active';
+    gamma.status = 'disconnected';
+
+    sim.update(1 / 60);
+    expect(sim.getState().phase).toBe('playing');
+
+    beta.status = 'downed';
+    beta.player.health = 0;
+    sim.update(1 / 60);
+
+    expect(sim.getState().phase).toBe('gameOver');
+  });
+
+  it('summarizes rolling frame, update, and render timings', () => {
+    resetPerfForTests();
+
+    beginFrame(0);
+    beginUpdate(1);
+    endUpdate(3);
+    beginRender(4);
+    endRender(8);
+    endFrame(16);
+
+    beginFrame(16);
+    beginUpdate(17);
+    endUpdate(23);
+    beginRender(24);
+    endRender(34);
+    endFrame(50);
+
+    expect(summary()).toEqual({
+      fps: 40,
+      p50Frame: 34,
+      p95Frame: 34,
+      updateP50: 6,
+      updateP95: 6,
+      renderP50: 10,
+      renderP95: 10
+    });
+  });
+
+  it('preloads cached render sprites once and reuses them across viewport resizes', () => {
+    const canvasStub = installCanvasStub();
+
+    try {
+      __resetRenderAssetsForTests();
+      const assets = preloadRenderAssets();
+      const createdAfterPreload = canvasStub.created();
+
+      expect(assets.player.image).toBeDefined();
+      expect(assets.enemies.basic.normal.image).toBeDefined();
+      expect(getRenderAssetStats().builds).toBe(1);
+      expect(createdAfterPreload).toBeGreaterThan(8);
+
+      const engine = new GameEngine(() => 0.5);
+      engine.setViewSize(1280, 800);
+      engine.preloadRenderAssets();
+      engine.setViewSize(390, 844);
+      engine.preloadRenderAssets();
+
+      expect(preloadRenderAssets()).toBe(assets);
+      expect(getRenderAssetStats().builds).toBe(1);
+      expect(canvasStub.created()).toBe(createdAfterPreload + 3);
+    } finally {
+      __resetRenderAssetsForTests();
+      canvasStub.restore();
+    }
+  });
+
+  it('keeps squared-distance nearest targeting behavior compatible with previous range semantics', () => {
+    const origin = { x: 0, y: 0 };
+    const enemies: Enemy[] = [
+      {
+        id: 'outside',
+        type: 'basic',
+        rank: 'normal',
+        position: { x: 101, y: 0 },
+        velocity: { x: 0, y: 0 },
+        radius: 16,
+        maxHealth: 20,
+        health: 20,
+        speed: 80,
+        damage: 8,
+        xpValue: 1,
+        color: '#fff',
+        cooldown: 0,
+        hitFlash: 0
+      },
+      {
+        id: 'inside-later-tie',
+        type: 'basic',
+        rank: 'normal',
+        position: { x: 60, y: 80 },
+        velocity: { x: 0, y: 0 },
+        radius: 16,
+        maxHealth: 20,
+        health: 20,
+        speed: 80,
+        damage: 8,
+        xpValue: 1,
+        color: '#fff',
+        cooldown: 0,
+        hitFlash: 0
+      },
+      {
+        id: 'nearest',
+        type: 'fast',
+        rank: 'normal',
+        position: { x: 30, y: 40 },
+        velocity: { x: 0, y: 0 },
+        radius: 12,
+        maxHealth: 12,
+        health: 12,
+        speed: 160,
+        damage: 8,
+        xpValue: 1,
+        color: '#fff',
+        cooldown: 0,
+        hitFlash: 0
+      }
+    ];
+
+    expect(findNearestEnemy(enemies, origin, 100)?.id).toBe('nearest');
+    expect(findNearestEnemy(enemies, origin, 49)).toBeUndefined();
+  });
+
   it('normalizes diagonal player movement so it is not faster than straight movement', () => {
     const player = createStartingPlayer({ x: 500, y: 500 });
 
@@ -394,12 +684,16 @@ describe('core game logic', () => {
     };
 
     try {
+      __resetRenderAssetsForTests();
       engine.setViewSize(1280, 800);
       engine.preloadRenderAssets();
+      const createdAfterFirstPreload = canvasStub.created();
       engine.preloadRenderAssets();
 
-      expect(canvasStub.created()).toBe(3);
+      expect(createdAfterFirstPreload).toBeGreaterThan(8);
+      expect(canvasStub.created()).toBe(createdAfterFirstPreload);
     } finally {
+      __resetRenderAssetsForTests();
       canvasStub.restore();
     }
   });

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 *.tsbuildinfo
+*.md
+!README.md
 vite.config.js
 vite.config.d.ts
 .playwright-cli/

@@ -2,19 +2,13 @@ import type { DamageText, Enemy, Projectile } from './types';
 
 export function resolveProjectileEnemyHit(projectile: Projectile, enemy: Enemy): { projectile: Projectile; enemy: Enemy; damageText: DamageText } {
   const damage = Math.round(projectile.damage);
-  const nextProjectile = {
-    ...projectile,
-    pierce: Math.max(0, projectile.pierce - 1)
-  };
-  const nextEnemy = {
-    ...enemy,
-    health: Math.max(0, enemy.health - damage),
-    hitFlash: 0.12
-  };
+  projectile.pierce = Math.max(0, projectile.pierce - 1);
+  enemy.health = Math.max(0, enemy.health - damage);
+  enemy.hitFlash = 0.12;
 
   return {
-    projectile: nextProjectile,
-    enemy: nextEnemy,
+    projectile,
+    enemy,
     damageText: {
       id: `damage-${projectile.id}-${enemy.id}`,
       position: { x: enemy.position.x, y: enemy.position.y - enemy.radius - 6 },

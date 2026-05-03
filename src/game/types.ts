@@ -69,6 +69,7 @@ export type ProjectileKind = 'bolt' | 'arrow' | 'pulse' | 'ranged';
 export interface Projectile {
   id: string;
   owner: ProjectileOwner;
+  ownerPlayerId?: string;
   kind: ProjectileKind;
   position: Vector;
   velocity: Vector;
@@ -194,6 +195,7 @@ export interface RunDirectorState {
 }
 
 export type GamePhase = 'menu' | 'playing' | 'paused' | 'levelUp' | 'chestReward' | 'gameOver' | 'victory';
+export type PlayerStatus = 'active' | 'choosing' | 'downed' | 'disconnected';
 
 export interface GameStats {
   timeSurvived: number;
@@ -231,4 +233,42 @@ export interface GameState {
   stats: GameStats;
   orbitAngle: number;
   screenShake: number;
+}
+
+export interface PlayerRuntime {
+  id: string;
+  name: string;
+  color: string;
+  status: PlayerStatus;
+  player: Player;
+  weapons: Weapon[];
+  level: number;
+  xp: number;
+  xpToNext: number;
+  upgradeChoices: UpgradeOption[];
+  pendingChestChoices: UpgradeOption[];
+  stats: GameStats;
+  reviveProgress: number;
+}
+
+export interface PlayerCommand {
+  type?: 'command';
+  playerId: string;
+  seq?: number;
+  moveUp: boolean;
+  moveDown: boolean;
+  moveLeft: boolean;
+  moveRight: boolean;
+  aimWorldX: number;
+  aimWorldY: number;
+  reviveHeld: boolean;
+}
+
+export interface MultiplayerGameState extends Omit<GameState, 'player' | 'weapons' | 'upgradeChoices' | 'pendingChestChoices' | 'level' | 'xp' | 'xpToNext' | 'stats'> {
+  players: PlayerRuntime[];
+}
+
+export interface MultiplayerSnapshot {
+  localPlayerId: string;
+  state: MultiplayerGameState;
 }

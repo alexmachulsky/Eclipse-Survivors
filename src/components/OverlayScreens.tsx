@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameSnapshot } from '../game/GameEngine';
-import type { Weapon } from '../game/types';
+import type { PlayerRuntime, Weapon } from '../game/types';
 import { WeaponTile } from './Hud';
 
 interface MenuProps {
   onStart: () => void;
+  onLanStart: () => void;
 }
 
 interface SummaryProps {
@@ -49,7 +50,7 @@ function useCountUp(target: number, duration = 700): number {
   return value;
 }
 
-export function MainMenu({ onStart }: MenuProps) {
+export function MainMenu({ onStart, onLanStart }: MenuProps) {
   return (
     <div className="overlay overlay--menu">
       <div className="panel menu-panel">
@@ -58,12 +59,64 @@ export function MainMenu({ onStart }: MenuProps) {
         <p className="menu-copy">
           Survive the eclipse arena, gather power, and break the final threat.
         </p>
-        <button className="primary-button" type="button" onClick={onStart}>
-          Start Run
-        </button>
+        <div className="button-row">
+          <button className="primary-button" type="button" onClick={onStart}>
+            Solo
+          </button>
+          <button className="secondary-button" type="button" onClick={onLanStart}>
+            LAN Multiplayer
+          </button>
+        </div>
         <p className="control-hint">
           <strong>WASD</strong> / arrows to move &nbsp;·&nbsp; <strong>mouse</strong> to aim &nbsp;·&nbsp; <strong>Esc</strong> to pause
         </p>
+      </div>
+    </div>
+  );
+}
+
+export function LanLobby({
+  players,
+  localPlayerId,
+  hostPlayerId,
+  connectionStatus,
+  onStart,
+  onLeave
+}: {
+  players: PlayerRuntime[];
+  localPlayerId: string | null;
+  hostPlayerId: string | null;
+  connectionStatus: string;
+  onStart: () => void;
+  onLeave: () => void;
+}) {
+  const isHost = localPlayerId !== null && localPlayerId === hostPlayerId;
+
+  return (
+    <div className="overlay overlay--menu">
+      <div className="panel menu-panel">
+        <p className="eyebrow">LAN Lobby</p>
+        <h2>Co-op run</h2>
+        <div className="lobby-list">
+          {players.map((player) => (
+            <div key={player.id} className="lobby-player">
+              <span className="lobby-swatch" style={{ background: player.color }} />
+              <strong>{player.name}{player.id === hostPlayerId ? ' · host' : ''}</strong>
+              <span>{player.status}</span>
+            </div>
+          ))}
+        </div>
+        <p className="control-hint">{connectionStatus}</p>
+        <div className="button-row">
+          {isHost && (
+            <button className="primary-button" type="button" onClick={onStart}>
+              Start
+            </button>
+          )}
+          <button className="secondary-button" type="button" onClick={onLeave}>
+            Leave
+          </button>
+        </div>
       </div>
     </div>
   );

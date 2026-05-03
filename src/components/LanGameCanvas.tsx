@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { GameEngine, type GameSnapshot } from '../game/GameEngine';
+import { GameEngine } from '../game/GameEngine';
 import {
   beginFrame,
   beginRender,
@@ -10,21 +10,24 @@ import {
   summary,
   type PerfSummary
 } from '../game/perf';
+import type { MultiplayerGameState, PlayerCommand, Vector } from '../game/types';
+import { clamp } from '../game/collisions';
 
-interface GameCanvasProps {
-  onReady: (engine: GameEngine) => void;
-  onSnapshot: (snapshot: GameSnapshot) => void;
+interface LanGameCanvasProps {
+  state: MultiplayerGameState | null;
+  localPlayerId: string | null;
+  sendCommand: (command: PlayerCommand) => void;
 }
 
-const keyMap: Record<string, 'up' | 'down' | 'left' | 'right'> = {
-  KeyW: 'up',
-  ArrowUp: 'up',
-  KeyS: 'down',
-  ArrowDown: 'down',
-  KeyA: 'left',
-  ArrowLeft: 'left',
-  KeyD: 'right',
-  ArrowRight: 'right'
+const keyMap: Record<string, 'moveUp' | 'moveDown' | 'moveLeft' | 'moveRight'> = {
+  KeyW: 'moveUp',
+  ArrowUp: 'moveUp',
+  KeyS: 'moveDown',
+  ArrowDown: 'moveDown',
+  KeyA: 'moveLeft',
+  ArrowLeft: 'moveLeft',
+  KeyD: 'moveRight',
+  ArrowRight: 'moveRight'
 };
 
 const MAX_CANVAS_PIXEL_RATIO = 1;
@@ -35,19 +38,52 @@ function FpsOverlay({ metrics, fast }: { metrics: PerfSummary | null; fast: bool
       <span>FPS {metrics ? metrics.fps : '--'}{fast ? ' FAST' : ''}</span>
       {metrics && (
         <span>
-          frame {metrics.p50Frame}/{metrics.p95Frame}ms · update {metrics.updateP50}/{metrics.updateP95}ms · render {metrics.renderP50}/{metrics.renderP95}ms
+          frame {metrics.p50Frame}/{metrics.p95Frame}ms · render {metrics.renderP50}/{metrics.renderP95}ms
         </span>
       )}
     </div>
   );
 }
 
-export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
+function screenToWorld(state: MultiplayerGameState, localPlayerId: string, viewSize: { width: number; height: number }, screen: Vector): Vector {
+  const runtime = state.players.find((player) => player.id === localPlayerId) ?? state.players[0];
+  const width = viewSize.width;
+  const height = viewSize.height;
+  const x = clamp((runtime?.player.position.x ?? 1600) - width / 2, 0, Math.max(0, state.arena.width - width));
+  const y = clamp((runtime?.player.position.y ?? 1200) - height / 2, 0, Math.max(0, state.arena.height - height));
+
+  return {
+    x: x + screen.x,
+    y: y + screen.y
+  };
+}
+
+export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
+  const latestStateRef = useRef<MultiplayerGameState | null>(state);
+  const localPlayerIdRef = useRef<string | null>(localPlayerId);
+  const keysRef = useRef({
+    moveUp: false,
+    moveDown: false,
+    moveLeft: false,
+    moveRight: false,
+    reviveHeld: false
+  });
+  const mouseRef = useRef<Vector>({ x: 0, y: 0 });
+  const viewSizeRef = useRef({ width: 1280, height: 720 });
+  const seqRef = useRef(0);
   const debugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [fastMode, setFastMode] = useState(false);
+
+  useEffect(() => {
+    latestStateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    localPlayerIdRef.current = localPlayerId;
+  }, [localPlayerId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -56,22 +92,18 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
       return undefined;
     }
 
-    const engine = new GameEngine();
     const context = canvas.getContext('2d');
+    const engine = new GameEngine();
     let frameId = 0;
     let lastTime = performance.now();
-    let snapshotTimer = 0;
     let fpsTimer = 0;
     let fpsFrames = 0;
-    let lowFpsSamples = 0;
-    let stableFpsSamples = 0;
 
     if (!context) {
       return undefined;
     }
 
     engineRef.current = engine;
-    onReady(engine);
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -79,6 +111,7 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
       canvas.width = Math.floor(rect.width * pixelRatio);
       canvas.height = Math.floor(rect.height * pixelRatio);
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      viewSizeRef.current = { width: rect.width, height: rect.height };
       engine.setViewSize(rect.width, rect.height);
     };
 
@@ -92,38 +125,41 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
       beginFrame(lastTime);
       lastTime = time;
       beginUpdate();
-      engine.update(dt);
       endUpdate();
+
+      const currentState = latestStateRef.current;
+      const currentPlayerId = localPlayerIdRef.current;
+
+      if (currentState && currentPlayerId) {
+        const aim = screenToWorld(currentState, currentPlayerId, viewSizeRef.current, mouseRef.current);
+        sendCommand({
+          type: 'command',
+          playerId: currentPlayerId,
+          seq: seqRef.current,
+          moveUp: keysRef.current.moveUp,
+          moveDown: keysRef.current.moveDown,
+          moveLeft: keysRef.current.moveLeft,
+          moveRight: keysRef.current.moveRight,
+          aimWorldX: aim.x,
+          aimWorldY: aim.y,
+          reviveHeld: keysRef.current.reviveHeld
+        });
+        seqRef.current += 1;
+        engine.loadMultiplayerState(currentState, currentPlayerId);
+      }
+
       beginRender();
       engine.render(context);
       endRender();
       endFrame(time);
-      snapshotTimer += dt;
       fpsTimer += dt;
       fpsFrames += 1;
 
-      if (snapshotTimer > 1 / 20) {
-        onSnapshot(engine.getSnapshot());
-        snapshotTimer = 0;
-      }
-
       if (fpsTimer >= 0.25) {
         const fps = fpsFrames / fpsTimer;
-
         if (fps < 58) {
-          lowFpsSamples += 1;
-          stableFpsSamples = 0;
-        } else if (fps >= 59.5) {
-          stableFpsSamples += 1;
-          lowFpsSamples = 0;
-        } else {
-          lowFpsSamples = 0;
-          stableFpsSamples = 0;
-        }
-
-        if (lowFpsSamples >= 2) {
           engine.setPerformanceMode(true);
-        } else if (stableFpsSamples >= 16) {
+        } else if (fps >= 59.5) {
           engine.setPerformanceMode(false);
         }
 
@@ -143,25 +179,14 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
 
     const onKeyDown = (event: KeyboardEvent) => {
       const mapped = keyMap[event.code];
-      const debug = new URLSearchParams(window.location.search).has('debug');
 
       if (mapped) {
-        engine.setMovement({ [mapped]: true });
+        keysRef.current[mapped] = true;
         event.preventDefault();
       }
 
-      if (event.code === 'Escape') {
-        engine.togglePause();
-        onSnapshot(engine.getSnapshot());
-      }
-
-      if (debug) {
-        if (event.code === 'F2') engine.debugLevelUp();
-        if (event.code === 'F3') engine.debugOpenChest();
-        if (event.code === 'F4') engine.debugSpawnObjective();
-        if (event.code === 'F5') engine.debugSpawnElite();
-        if (event.code === 'F6') engine.debugSpawnBoss();
-        onSnapshot(engine.getSnapshot());
+      if (event.code === 'KeyE') {
+        keysRef.current.reviveHeld = true;
       }
     };
 
@@ -169,17 +194,21 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
       const mapped = keyMap[event.code];
 
       if (mapped) {
-        engine.setMovement({ [mapped]: false });
+        keysRef.current[mapped] = false;
         event.preventDefault();
+      }
+
+      if (event.code === 'KeyE') {
+        keysRef.current.reviveHeld = false;
       }
     };
 
     const onMouseMove = (event: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      engine.setMouse({
+      mouseRef.current = {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top
-      });
+      };
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -193,12 +222,13 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
       window.removeEventListener('keyup', onKeyUp);
       canvas.removeEventListener('mousemove', onMouseMove);
     };
-  }, [debugEnabled, onReady, onSnapshot]);
+  }, [debugEnabled, sendCommand]);
 
   return (
     <>
-      <canvas ref={canvasRef} className="game-canvas" aria-label="Eclipse Survivors playfield" />
+      <canvas ref={canvasRef} className="game-canvas" aria-label="Eclipse Survivors LAN playfield" />
       {debugEnabled && <FpsOverlay metrics={perfSummary} fast={fastMode} />}
     </>
   );
 }
+

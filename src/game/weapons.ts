@@ -1,5 +1,5 @@
 import type { Enemy, Player, Projectile, Weapon } from './types';
-import { angleTo, distance, vectorFromAngle } from './collisions';
+import { angleTo, vectorFromAngle } from './collisions';
 
 let projectileSequence = 0;
 
@@ -14,14 +14,16 @@ export function getUnlockedWeapons(weapons: Weapon[]): Weapon[] {
 
 export function findNearestEnemy(enemies: Enemy[], position: { x: number; y: number }, range = Infinity): Enemy | undefined {
   let nearest: Enemy | undefined;
-  let nearestDistance = range;
+  let nearestDistanceSq = range * range;
 
   for (const enemy of enemies) {
-    const currentDistance = distance(position, enemy.position);
+    const dx = position.x - enemy.position.x;
+    const dy = position.y - enemy.position.y;
+    const currentDistanceSq = dx * dx + dy * dy;
 
-    if (currentDistance <= nearestDistance) {
+    if (currentDistanceSq <= nearestDistanceSq) {
       nearest = enemy;
-      nearestDistance = currentDistance;
+      nearestDistanceSq = currentDistanceSq;
     }
   }
 
