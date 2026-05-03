@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { Hud } from './components/Hud';
 import { LanGameCanvas } from './components/LanGameCanvas';
@@ -7,6 +7,7 @@ import { UpgradeScreen } from './components/UpgradeScreen';
 import { GameEngine, type GameSnapshot } from './game/GameEngine';
 import { clamp } from './game/collisions';
 import { getActLabel } from './game/runDirector';
+import { saveRunRecord } from './game/persistence';
 import type { MultiplayerGameState, PlayerCommand, PlayerRuntime } from './game/types';
 import { getUnlockedWeapons } from './game/weapons';
 
@@ -73,12 +74,35 @@ function createLocalSnapshot(serverSnapshot: ServerSnapshot | null): GameSnapsho
 export default function App() {
   const engineRef = useRef<GameEngine | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const savedRef = useRef(false);
   const [snapshot, setSnapshot] = useState<GameSnapshot>(initialSnapshot);
   const [mode, setMode] = useState<Mode>('solo');
   const [lanSnapshot, setLanSnapshot] = useState<ServerSnapshot | null>(null);
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
 
   const localLanSnapshot = useMemo(() => createLocalSnapshot(lanSnapshot), [lanSnapshot]);
+
+  // Reset savedRef when starting a new run
+  useEffect(() => {
+    if (snapshot.phase === 'menu' || snapshot.phase === 'playing' || snapshot.phase === 'paused' || snapshot.phase === 'levelUp' || snapshot.phase === 'chestReward') {
+      savedRef.current = false;
+    }
+  }, [snapshot.phase]);
+
+  // Save run record when game ends
+  useEffect(() => {
+    if ((snapshot.phase === 'gameOver' || snapshot.phase === 'victory') && !savedRef.current) {
+      savedRef.current = true;
+      const weaponTitles = ['Magic Bolt', 'Orbit Blades', 'Area Pulse', 'Piercing Arrow', 'Starfall'];
+      saveRunRecord({
+        timeSurvived: snapshot.stats.timeSurvived,
+        kills: snapshot.stats.kills,
+        level: snapshot.level,
+        damageDealt: snapshot.stats.damageDealt,
+        weaponPath: snapshot.upgradeHistory.filter(t => weaponTitles.some(w => t.includes(w))),
+      });
+    }
+  }, [snapshot.phase, snapshot.stats, snapshot.level, snapshot.upgradeHistory]);
 
   const handleReady = useCallback((engine: GameEngine) => {
     engineRef.current = engine;
