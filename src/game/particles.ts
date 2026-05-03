@@ -47,18 +47,23 @@ export function createXpGem(enemy: Enemy): XPGem {
 }
 
 export function updateParticles(particles: Particle[], dt: number): Particle[] {
-  return particles
-    .map((particle) => ({
-      ...particle,
-      position: {
-        x: particle.position.x + particle.velocity.x * dt,
-        y: particle.position.y + particle.velocity.y * dt
-      },
-      velocity: {
-        x: particle.velocity.x * 0.94,
-        y: particle.velocity.y * 0.94
-      },
-      life: particle.life - dt
-    }))
-    .filter((particle) => particle.life > 0);
+  let writeIndex = 0;
+
+  for (let index = 0; index < particles.length; index += 1) {
+    const particle = particles[index];
+
+    particle.position.x += particle.velocity.x * dt;
+    particle.position.y += particle.velocity.y * dt;
+    particle.velocity.x *= 0.94;
+    particle.velocity.y *= 0.94;
+    particle.life -= dt;
+
+    if (particle.life > 0) {
+      particles[writeIndex] = particle;
+      writeIndex += 1;
+    }
+  }
+
+  particles.length = writeIndex;
+  return particles;
 }

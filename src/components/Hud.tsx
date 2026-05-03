@@ -32,6 +32,8 @@ export function WeaponTile({ weapon }: { weapon: Weapon }) {
 export function Hud({ snapshot, onPause }: HudProps) {
   const healthRatio = Math.max(0, snapshot.health / snapshot.maxHealth);
   const xpRatio = Math.max(0, Math.min(1, snapshot.xp / snapshot.xpToNext));
+  const objective = snapshot.activeObjective;
+  const objectiveRatio = objective ? Math.max(0, Math.min(1, objective.captureProgress / objective.requiredCapture)) : 0;
 
   return (
     <>
@@ -45,6 +47,15 @@ export function Hud({ snapshot, onPause }: HudProps) {
             <SkullIcon size={14} color="#94a3b8" />
             <strong>{snapshot.kills}</strong>
           </span>
+          <span className="hud-stat hud-stat--act">
+            <strong>{snapshot.actLabel}</strong>
+          </span>
+          {objective && (
+            <span className="objective-alert">
+              Rift {Math.round(objectiveRatio * 100)}%
+            </span>
+          )}
+          {snapshot.enemyCurseStacks > 0 && <span className="curse-alert">Curse {snapshot.enemyCurseStacks}</span>}
           {snapshot.bossSpawned && <span className="boss-alert">Boss</span>}
         </div>
       </div>
@@ -65,6 +76,15 @@ export function Hud({ snapshot, onPause }: HudProps) {
               <strong>Lv {snapshot.level}</strong>
             </div>
           </div>
+          {snapshot.bossHealthRatio !== null && (
+            <div className="hud-bar-row">
+              <SkullIcon size={13} color="var(--c-danger)" />
+              <div className="meter boss-health-meter" aria-label="Boss health">
+                <span style={{ width: `${snapshot.bossHealthRatio * 100}%` }} />
+                <strong>Night Lich</strong>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="hud-weapons-row">

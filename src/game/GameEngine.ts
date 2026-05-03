@@ -1,12 +1,25 @@
-import { angleTo, circlesOverlap, clamp, distance, normalizeVector, vectorFromAngle } from './collisions';
+import { angleTo, circlesOverlapSq, clamp, vectorFromAngle } from './collisions';
+import { buildCosmicLayers, drawCosmicBackground, drawTwinkleStars, type CosmicLayers } from './cosmic';
+import { RUN_LENGTH_SECONDS } from './content';
 import { chooseEnemyType, getBossSpawn, spawnEnemyOutsideViewport, updateEnemies } from './enemies';
 import { createDeathParticles, createXpGem, updateParticles } from './particles';
 import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
+import { preloadRenderAssets, type RenderAssets, type SpriteAsset } from './renderAssets';
+import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
+import {
+  collectRunDirectorEvents,
+  createRiftObjective,
+  getActLabel,
+  getBossPhase,
+  updateObjectiveProgress,
+  type RunDirectorEvent
+} from './runDirector';
+import { SpatialGrid } from './spatialGrid';
 import { createInitialGameState } from './state';
-import { applyUpgrade, createUpgradeChoices, getXpThreshold } from './upgrades';
-import { createAreaPulse, findNearestEnemy, fireWeaponAtTarget, getUnlockedWeapons } from './weapons';
-import type { DamageText, Enemy, GamePhase, GameState, InputState, Projectile, UpgradeOption, Vector, Viewport, Weapon } from './types';
+import { getXpThreshold } from './upgrades';
+import { createAreaPulse, createStarfallSparks, findNearestEnemy, fireWeaponAtTarget, getUnlockedWeapons } from './weapons';
+import type { DamageText, Enemy, GamePhase, GameState, HealthPickup, InputState, MultiplayerGameState, PlayerRuntime, Projectile, RewardChest, Telegraph, UpgradeOption, Vector, Viewport, Weapon } from './types';
 
 export interface GameSnapshot {
   phase: GamePhase;
@@ -22,10 +35,22 @@ export interface GameSnapshot {
   upgradeChoices: UpgradeOption[];
   stats: GameState['stats'];
   bossSpawned: boolean;
+  bossHealthRatio: number | null;
+  actLabel: string;
+  activeObjective: GameState['objectives'][number] | null;
+  enemyCurseStacks: number;
+  pendingChestChoices: UpgradeOption[];
 }
 
-const BOSS_SPAWN_TIME = 300;
 const MIN_SPAWN_INTERVAL = 0.26;
+const MAX_PARTICLES = 220;
+const MAX_DAMAGE_TEXTS = 90;
+const MAX_TELEGRAPHS = 24;
+const HEALTH_PICKUP_MIN_INTERVAL = 10;
+const HEALTH_PICKUP_INTERVAL_VARIANCE = 10;
+const MAX_HEALTH_PICKUPS = 4;
+const HEALTH_PICKUP_MIN_HEAL = 5;
+const HEALTH_PICKUP_HEAL_RANGE = 6;
 
 export class GameEngine {
   private state: GameState = createInitialGameState();
@@ -39,7 +64,18 @@ export class GameEngine {
   };
   private viewSize = { width: 1280, height: 720 };
   private spawnTimer = 0.2;
+  private healthPickupTimer = 0;
+  private healthPickupSequence = 0;
+  private chestSequence = 0;
+  private objectiveSequence = 0;
+  private bossSummonTimer = 9;
   private rng: () => number;
+  private cosmic: CosmicLayers | null = null;
+  private renderAssets: RenderAssets | null = null;
+  private readonly enemyGrid = new SpatialGrid(96);
+  private glowScale = 1;
+  private performanceMode = false;
+  private fastRender = false;
 
   constructor(rng: () => number = Math.random) {
     this.rng = rng;
@@ -49,6 +85,11 @@ export class GameEngine {
     this.state = createInitialGameState();
     this.state.phase = 'playing';
     this.spawnTimer = 0.2;
+    this.healthPickupTimer = this.nextHealthPickupInterval();
+    this.healthPickupSequence = 0;
+    this.chestSequence = 0;
+    this.objectiveSequence = 0;
+    this.bossSummonTimer = 9;
   }
 
   pause(): void {
@@ -71,6 +112,75 @@ export class GameEngine {
     }
   }
 
+  debugLevelUp(): void {
+    if (this.state.phase !== 'playing') {
+      return;
+    }
+
+    this.state.upgradeChoices = createUpgradeChoices(this.state.player, this.state.weapons, this.rng);
+    this.state.phase = 'levelUp';
+  }
+
+  debugOpenChest(): void {
+    if (this.state.phase !== 'playing') {
+      return;
+    }
+
+    this.state.pendingChestChoices = createChestRewardChoices(this.state.player, this.state.weapons, this.rng);
+    this.state.phase = 'chestReward';
+  }
+
+  debugSpawnObjective(): void {
+    if (this.state.phase === 'playing') {
+      this.spawnRiftObjective(this.state.elapsed);
+    }
+  }
+
+  debugSpawnElite(): void {
+    if (this.state.phase === 'playing') {
+      this.spawnElite();
+    }
+  }
+
+  debugSpawnBoss(): void {
+    if (this.state.phase === 'playing' && !this.state.bossSpawned) {
+      this.spawnBoss();
+    }
+  }
+
+  setPerformanceMode(enabled: boolean): void {
+    this.performanceMode = enabled;
+  }
+
+  isPerformanceMode(): boolean {
+    return this.performanceMode;
+  }
+
+  preloadRenderAssets(): void {
+    this.ensureCosmic();
+    this.renderAssets = preloadRenderAssets();
+  }
+
+  loadMultiplayerState(state: MultiplayerGameState, localPlayerId: string): void {
+    const localRuntime = state.players.find((runtime) => runtime.id === localPlayerId) ?? state.players[0];
+
+    if (!localRuntime) {
+      return;
+    }
+
+    this.state = {
+      ...state,
+      player: localRuntime.player,
+      weapons: localRuntime.weapons,
+      upgradeChoices: localRuntime.upgradeChoices,
+      pendingChestChoices: localRuntime.pendingChestChoices,
+      level: localRuntime.level,
+      xp: localRuntime.xp,
+      xpToNext: localRuntime.xpToNext,
+      stats: localRuntime.stats
+    };
+  }
+
   setViewSize(width: number, height: number): void {
     this.viewSize = {
       width: Math.max(320, width),
@@ -89,11 +199,12 @@ export class GameEngine {
   }
 
   selectUpgrade(upgradeId: string): void {
-    if (this.state.phase !== 'levelUp') {
+    if (this.state.phase !== 'levelUp' && this.state.phase !== 'chestReward') {
       return;
     }
 
-    const choice = this.state.upgradeChoices.find((upgrade) => upgrade.id === upgradeId);
+    const choices = this.state.phase === 'chestReward' ? this.state.pendingChestChoices : this.state.upgradeChoices;
+    const choice = choices.find((upgrade) => upgrade.id === upgradeId);
 
     if (!choice) {
       return;
@@ -104,7 +215,9 @@ export class GameEngine {
     this.state.weapons = upgraded.weapons;
     this.state.stats.upgradesCollected += 1;
     this.state.upgradeChoices = [];
+    this.state.pendingChestChoices = [];
     this.state.phase = 'playing';
+    this.addBurstParticles(this.state.player.position, choice.kind === 'evolution' ? '#ffd166' : '#5eead4', choice.kind === 'evolution' ? 34 : 14);
   }
 
   update(dt: number): void {
@@ -114,13 +227,17 @@ export class GameEngine {
       return;
     }
 
+    const previousElapsed = this.state.elapsed;
     this.state.elapsed += cappedDt;
     this.state.stats.timeSurvived = this.state.elapsed;
     this.state.difficultyTier = Math.floor(this.state.elapsed / 30);
     this.state.screenShake = Math.max(0, this.state.screenShake - cappedDt * 24);
     this.input.mouseWorld = this.screenToWorld(this.input.mouse);
     this.updatePlayer(cappedDt);
+    this.processRunDirectorEvents(collectRunDirectorEvents(this.state.runDirector, previousElapsed, this.state.elapsed));
+    this.updateObjectives(cappedDt);
     this.spawnEnemies(cappedDt);
+    this.spawnHealthPickup(cappedDt);
     this.updateWeapons(cappedDt);
     this.state.enemies = updateEnemies(this.state.enemies, this.state.player.position, cappedDt);
     this.updateRangedEnemies(cappedDt);
@@ -128,6 +245,8 @@ export class GameEngine {
     this.state.enemyProjectiles = updateProjectiles(this.state.enemyProjectiles, cappedDt);
     this.resolveCombat();
     this.updateGems(cappedDt);
+    this.updateHealthPickups(cappedDt);
+    this.updateRewardChests(cappedDt);
     this.updateEffects(cappedDt);
     this.checkEndStates();
   }
@@ -135,31 +254,44 @@ export class GameEngine {
   render(ctx: CanvasRenderingContext2D): void {
     const viewport = this.getViewport();
     const shake = this.state.screenShake > 0 ? this.state.screenShake : 0;
+    const shakePhase = this.state.elapsed * 47.23 + shake * 0.113;
     const shakeOffset = {
-      x: (this.rng() - 0.5) * shake,
-      y: (this.rng() - 0.5) * shake
+      x: Math.sin(shakePhase) * shake * 0.45,
+      y: Math.cos(shakePhase * 1.37) * shake * 0.45
     };
 
     ctx.clearRect(0, 0, this.viewSize.width, this.viewSize.height);
+    this.glowScale = this.getGlowScale();
+    this.fastRender = this.performanceMode || this.glowScale === 0;
     this.drawBackdrop(ctx);
 
     ctx.save();
     ctx.translate(shakeOffset.x - viewport.x, shakeOffset.y - viewport.y);
-    this.drawArena(ctx);
-    this.drawGems(ctx);
-    this.drawProjectiles(ctx, this.state.playerProjectiles);
-    this.drawProjectiles(ctx, this.state.enemyProjectiles);
-    this.drawEnemies(ctx);
+    this.drawArena(ctx, viewport);
+    if (!this.performanceMode) {
+      drawTwinkleStars(ctx, this.ensureCosmic().twinkleStars, this.state.elapsed);
+    }
+    this.drawGems(ctx, viewport);
+    this.drawHealthPickups(ctx, viewport);
+    this.drawObjectives(ctx, viewport);
+    this.drawRewardChests(ctx, viewport);
+    this.drawTelegraphs(ctx, viewport);
+    this.drawProjectiles(ctx, this.state.playerProjectiles, viewport);
+    this.drawProjectiles(ctx, this.state.enemyProjectiles, viewport);
+    this.drawEnemies(ctx, viewport);
     this.drawOrbitWeapon(ctx);
     this.drawPlayer(ctx);
-    this.drawParticles(ctx);
-    this.drawDamageTexts(ctx);
+    this.drawParticles(ctx, viewport);
+    this.drawDamageTexts(ctx, viewport);
     ctx.restore();
 
+    this.drawEdgeMarkers(ctx, viewport);
     this.drawVignette(ctx);
   }
 
   getSnapshot(): GameSnapshot {
+    const boss = this.state.enemies.find((enemy) => enemy.type === 'boss');
+
     return {
       phase: this.state.phase,
       health: this.state.player.health,
@@ -173,8 +305,45 @@ export class GameEngine {
       weapons: getUnlockedWeapons(this.state.weapons),
       upgradeChoices: this.state.upgradeChoices,
       stats: { ...this.state.stats, level: this.state.level, timeSurvived: this.state.elapsed },
-      bossSpawned: this.state.bossSpawned
+      bossSpawned: this.state.bossSpawned,
+      bossHealthRatio: boss ? clamp(boss.health / boss.maxHealth, 0, 1) : null,
+      actLabel: getActLabel(this.state.elapsed),
+      activeObjective: this.state.objectives.find((objective) => objective.state === 'active') ?? null,
+      enemyCurseStacks: this.state.enemyCurseStacks,
+      pendingChestChoices: this.state.pendingChestChoices
     };
+  }
+
+  private processRunDirectorEvents(events: RunDirectorEvent[]): void {
+    for (const event of events) {
+      if (event.type === 'elite') {
+        this.spawnElite();
+      } else if (event.type === 'objective') {
+        this.spawnRiftObjective(event.scheduledAt);
+      } else {
+        this.spawnBoss();
+      }
+    }
+  }
+
+  private spawnElite(): void {
+    const type = chooseEnemyType(Math.max(this.state.elapsed, 90), this.state.difficultyTier + 2, this.rng);
+    const elite = this.applyCurseToEnemy(spawnEnemyOutsideViewport(type === 'boss' ? 'tank' : type, this.getViewport(180), this.state.difficultyTier + 1, this.rng, 'elite'));
+    elite.id = `elite-${elite.id}`;
+    this.state.enemies.push(elite);
+    this.state.screenShake = Math.max(this.state.screenShake, 10);
+  }
+
+  private spawnRiftObjective(scheduledAt: number): void {
+    this.objectiveSequence += 1;
+    this.state.objectives.push(createRiftObjective(`rift-${this.objectiveSequence}`, this.state.player.position, this.state.arena, scheduledAt, this.rng));
+    this.state.screenShake = Math.max(this.state.screenShake, 8);
+  }
+
+  private spawnBoss(): void {
+    this.state.enemies.push(getBossSpawn(this.getViewport(), this.state.difficultyTier));
+    this.state.bossSpawned = true;
+    this.state.screenShake = 22;
   }
 
   private updatePlayer(dt: number): void {
@@ -184,12 +353,6 @@ export class GameEngine {
 
   private spawnEnemies(dt: number): void {
     this.spawnTimer -= dt;
-
-    if (!this.state.bossSpawned && this.state.elapsed >= BOSS_SPAWN_TIME) {
-      this.state.enemies.push(getBossSpawn(this.getViewport(), this.state.difficultyTier));
-      this.state.bossSpawned = true;
-      this.state.screenShake = 18;
-    }
 
     if (this.spawnTimer > 0) {
       return;
@@ -202,119 +365,224 @@ export class GameEngine {
 
     for (let index = 0; index < packSize; index += 1) {
       const type = chooseEnemyType(this.state.elapsed, tier, this.rng);
-      this.state.enemies.push(spawnEnemyOutsideViewport(type, viewport, tier, this.rng));
+      this.state.enemies.push(this.applyCurseToEnemy(spawnEnemyOutsideViewport(type, viewport, tier, this.rng)));
     }
 
     this.spawnTimer = interval;
+  }
+
+  private applyCurseToEnemy(enemy: Enemy): Enemy {
+    if (this.state.enemyCurseStacks <= 0 || enemy.rank === 'boss') {
+      return enemy;
+    }
+
+    const scale = 1 + this.state.enemyCurseStacks * 0.08;
+    return {
+      ...enemy,
+      speed: Math.round(enemy.speed * scale),
+      damage: Math.round(enemy.damage * scale)
+    };
+  }
+
+  private applyCurseToExistingEnemies(): void {
+    for (const enemy of this.state.enemies) {
+      if (enemy.rank === 'boss') {
+        continue;
+      }
+
+      enemy.speed = Math.round(enemy.speed * 1.08);
+      enemy.damage = Math.round(enemy.damage * 1.08);
+    }
+  }
+
+  private updateObjectives(dt: number): void {
+    const result = updateObjectiveProgress(this.state.objectives, this.state.player.position, dt);
+
+    for (const id of result.completedIds) {
+      const objective = this.state.objectives.find((item) => item.id === id);
+      if (objective) {
+        this.createRewardChest(objective.position, 'objective');
+        this.addBurstParticles(objective.position, '#5eead4', 28);
+      }
+    }
+
+    for (const id of result.cursedIds) {
+      const objective = this.state.objectives.find((item) => item.id === id);
+      this.state.enemyCurseStacks += 1;
+      this.applyCurseToExistingEnemies();
+      if (objective) {
+        this.addBurstParticles(objective.position, '#ff335f', 22);
+      }
+    }
+
+    this.state.objectives = result.objectives.filter((objective) => objective.state === 'active' || this.state.elapsed - objective.spawnedAt < 8);
+  }
+
+  private nextHealthPickupInterval(): number {
+    return HEALTH_PICKUP_MIN_INTERVAL + this.rng() * HEALTH_PICKUP_INTERVAL_VARIANCE;
+  }
+
+  private spawnHealthPickup(dt: number): void {
+    this.healthPickupTimer -= dt;
+
+    if (this.healthPickupTimer > 0) {
+      return;
+    }
+
+    this.healthPickupTimer = this.nextHealthPickupInterval();
+
+    if (this.state.healthPickups.length >= MAX_HEALTH_PICKUPS) {
+      return;
+    }
+
+    const angle = this.rng() * Math.PI * 2;
+    const distance = 170 + this.rng() * 280;
+    const position = {
+      x: clamp(this.state.player.position.x + Math.cos(angle) * distance, 40, this.state.arena.width - 40),
+      y: clamp(this.state.player.position.y + Math.sin(angle) * distance, 40, this.state.arena.height - 40)
+    };
+
+    this.healthPickupSequence += 1;
+    this.state.healthPickups.push({
+      id: `health-${this.healthPickupSequence}`,
+      position,
+      heal: HEALTH_PICKUP_MIN_HEAL + Math.floor(this.rng() * HEALTH_PICKUP_HEAL_RANGE),
+      radius: 11,
+      color: '#fb7185',
+      life: 0,
+      maxLife: 45
+    });
   }
 
   private updateWeapons(dt: number): void {
     const projectiles: Projectile[] = [];
 
     this.state.orbitAngle += dt * 2.8;
-    this.state.weapons = this.state.weapons.map((weapon) => ({
-      ...weapon,
-      cooldown: Math.max(0, weapon.cooldown - dt * this.state.player.attackRateMultiplier)
-    }));
+    for (const weapon of this.state.weapons) {
+      weapon.cooldown = Math.max(0, weapon.cooldown - dt * this.state.player.attackRateMultiplier);
+    }
 
-    this.state.weapons = this.state.weapons.map((weapon) => {
+    for (const weapon of this.state.weapons) {
       if (!weapon.unlocked || weapon.level <= 0) {
-        return weapon;
+        continue;
       }
 
       if (weapon.id === 'orbit') {
-        return this.resolveOrbitHits(weapon);
+        this.resolveOrbitHits(weapon);
+        continue;
       }
 
       if (weapon.cooldown > 0) {
-        return weapon;
+        continue;
       }
 
       if (weapon.id === 'area-pulse') {
         projectiles.push(createAreaPulse(weapon, this.state.player));
-        return {
-          ...weapon,
-          cooldown: Math.max(0.7, weapon.fireRate * Math.pow(0.9, weapon.level - 1))
-        };
+        weapon.cooldown = Math.max(weapon.evolved ? 0.45 : 0.7, weapon.fireRate * Math.pow(weapon.evolved ? 0.84 : 0.9, weapon.level - 1));
+        continue;
       }
 
       const target = findNearestEnemy(this.state.enemies, this.state.player.position, weapon.range);
 
       if (!target) {
-        return weapon;
+        continue;
       }
 
       projectiles.push(...fireWeaponAtTarget(weapon, this.state.player, target));
-
-      return {
-        ...weapon,
-        cooldown: Math.max(0.16, weapon.fireRate * Math.pow(0.88, weapon.level - 1))
-      };
-    });
+      weapon.cooldown = Math.max(weapon.evolved ? 0.1 : 0.16, weapon.fireRate * Math.pow(weapon.evolved ? 0.8 : 0.88, weapon.level - 1));
+    }
 
     this.state.playerProjectiles.push(...projectiles);
   }
 
-  private resolveOrbitHits(weapon: Weapon): Weapon {
+  private resolveOrbitHits(weapon: Weapon): void {
     if (weapon.cooldown > 0) {
-      return weapon;
+      return;
     }
 
-    const bladeCount = 1 + Math.floor((weapon.level + 1) / 2);
-    const orbitRadius = weapon.range + weapon.level * 9;
-    const bladeRadius = 13 + weapon.level;
+    const bladeCount = (1 + Math.floor((weapon.level + 1) / 2)) + (weapon.evolved ? 1 : 0);
+    const orbitRadius = (weapon.range + weapon.level * 9) * this.state.player.areaMultiplier * (weapon.evolved ? 1.28 : 1);
+    const bladeRadius = 13 + weapon.level + (weapon.evolved ? 5 : 0);
     let hit = false;
 
-    this.state.enemies = this.state.enemies.map((enemy) => {
+    for (const enemy of this.state.enemies) {
       for (let index = 0; index < bladeCount; index += 1) {
         const angle = this.state.orbitAngle + (Math.PI * 2 * index) / bladeCount;
-        const bladePosition = {
-          x: this.state.player.position.x + Math.cos(angle) * orbitRadius,
-          y: this.state.player.position.y + Math.sin(angle) * orbitRadius
-        };
+        const bladeX = this.state.player.position.x + Math.cos(angle) * orbitRadius;
+        const bladeY = this.state.player.position.y + Math.sin(angle) * orbitRadius;
+        const dx = bladeX - enemy.position.x;
+        const dy = bladeY - enemy.position.y;
+        const radius = bladeRadius + enemy.radius;
 
-        if (circlesOverlap(bladePosition, bladeRadius, enemy.position, enemy.radius)) {
+        if (dx * dx + dy * dy <= radius * radius) {
           hit = true;
           const damage = Math.round(weapon.damage * this.state.player.damageMultiplier * (1 + weapon.level * 0.28));
-          this.state.damageTexts.push(this.createDamageText(enemy, damage, '#f0abfc'));
+          this.pushDamageText(this.createDamageText(enemy, damage, '#f0abfc'));
           this.state.stats.damageDealt += damage;
-
-          return {
-            ...enemy,
-            health: Math.max(0, enemy.health - damage),
-            hitFlash: 0.12
-          };
+          enemy.health = Math.max(0, enemy.health - damage);
+          enemy.hitFlash = 0.12;
+          if (weapon.evolved) {
+            enemy.speed *= 0.985;
+          }
+          break;
         }
       }
+    }
 
-      return enemy;
-    });
-
-    return {
-      ...weapon,
-      cooldown: hit ? 0.18 : 0
-    };
+    weapon.cooldown = hit ? (weapon.evolved ? 0.11 : 0.18) : 0;
   }
 
-  private updateRangedEnemies(_dt: number): void {
+  private updateRangedEnemies(dt: number): void {
     const shots: Projectile[] = [];
+    const boss = this.state.enemies.find((enemy) => enemy.type === 'boss');
 
-    this.state.enemies = this.state.enemies.map((enemy) => {
+    if (boss) {
+      const phase = getBossPhase(boss.health / boss.maxHealth);
+      this.bossSummonTimer -= dt;
+
+      if (phase >= 2 && this.bossSummonTimer <= 0) {
+        this.bossSummonTimer = 9;
+        const viewport = this.getViewport(120);
+        for (let index = 0; index < (phase === 3 ? 4 : 3); index += 1) {
+          const type = index % 2 === 0 ? 'fast' : 'basic';
+          this.state.enemies.push(this.applyCurseToEnemy(spawnEnemyOutsideViewport(type, viewport, this.state.difficultyTier, this.rng)));
+        }
+      }
+    }
+
+    for (const enemy of this.state.enemies) {
       if ((enemy.type !== 'ranged' && enemy.type !== 'boss') || enemy.cooldown > 0) {
-        return enemy;
+        continue;
       }
 
       const angle = angleTo(enemy.position, this.state.player.position);
-      const spreadCount = enemy.type === 'boss' ? 3 : 1;
+      const phase = enemy.type === 'boss' ? getBossPhase(enemy.health / enemy.maxHealth) : 1;
+      const spreadCount = enemy.type === 'boss' ? (phase === 1 ? 3 : phase === 2 ? 8 : 10) : 1;
+      const shotSpeed = enemy.type === 'boss' ? (phase === 3 ? 285 : 230) : 190;
+
+      this.addTelegraph({
+        id: `telegraph-${enemy.id}-${this.state.elapsed}`,
+        position: { ...enemy.position },
+        angle,
+        width: enemy.type === 'boss' ? 28 : enemy.rank === 'elite' ? 18 : 10,
+        length: enemy.type === 'boss' ? 540 : 330,
+        life: 0.22,
+        maxLife: 0.22,
+        kind: 'line',
+        color: enemy.type === 'boss' ? '#ff5d73' : '#ffd166'
+      });
 
       for (let index = 0; index < spreadCount; index += 1) {
-        const offset = spreadCount === 1 ? 0 : (index - 1) * 0.24;
+        const offset = enemy.type === 'boss' && phase >= 2
+          ? (Math.PI * 2 * index) / spreadCount
+          : spreadCount === 1 ? 0 : (index - (spreadCount - 1) / 2) * 0.24;
+        const shotAngle = enemy.type === 'boss' && phase >= 2 ? offset + this.state.elapsed * 0.35 : angle + offset;
         shots.push({
           id: `enemy-shot-${enemy.id}-${this.state.elapsed}-${index}`,
           owner: 'enemy',
           kind: 'ranged',
           position: { ...enemy.position },
-          velocity: vectorFromAngle(angle + offset, enemy.type === 'boss' ? 230 : 190),
+          velocity: vectorFromAngle(shotAngle, shotSpeed),
           radius: enemy.type === 'boss' ? 8 : 6,
           damage: enemy.damage,
           life: 3.5,
@@ -324,11 +592,8 @@ export class GameEngine {
         });
       }
 
-      return {
-        ...enemy,
-        cooldown: enemy.type === 'boss' ? 1.35 : 2.2
-      };
-    });
+      enemy.cooldown = enemy.type === 'boss' ? (phase === 3 ? 0.92 : phase === 2 ? 1.15 : 1.35) : enemy.rank === 'elite' ? 1.65 : 2.2;
+    }
 
     this.state.enemyProjectiles.push(...shots);
   }
@@ -341,17 +606,27 @@ export class GameEngine {
   }
 
   private resolvePlayerProjectiles(): void {
-    const nextProjectiles: Projectile[] = [];
+    const projectiles = this.state.playerProjectiles;
+    let writeIndex = 0;
 
-    for (let projectile of this.state.playerProjectiles) {
-      for (let index = 0; index < this.state.enemies.length; index += 1) {
+    this.enemyGrid.clear();
+    for (let index = 0; index < this.state.enemies.length; index += 1) {
+      const enemy = this.state.enemies[index];
+      this.enemyGrid.insert(index, enemy.position.x, enemy.position.y, enemy.radius);
+    }
+
+    for (let projectileIndex = 0; projectileIndex < projectiles.length; projectileIndex += 1) {
+      let projectile = projectiles[projectileIndex];
+      const candidates = this.enemyGrid.query(projectile.position.x, projectile.position.y, projectile.radius);
+
+      for (const index of candidates) {
         const enemy = this.state.enemies[index];
 
         if (projectile.hitIds?.has(enemy.id)) {
           continue;
         }
 
-        if (!circlesOverlap(projectile.position, projectile.radius, enemy.position, enemy.radius)) {
+        if (!circlesOverlapSq(projectile.position, projectile.radius, enemy.position, enemy.radius)) {
           continue;
         }
 
@@ -359,8 +634,12 @@ export class GameEngine {
         const result = resolveProjectileEnemyHit(projectile, enemy);
         projectile = result.projectile;
         this.state.enemies[index] = result.enemy;
-        this.state.damageTexts.push(result.damageText);
+        this.pushDamageText(result.damageText);
         this.state.stats.damageDealt += result.damageText.amount;
+        const sparks = createStarfallSparks(projectile, result.enemy);
+        if (sparks.length > 0 && this.state.playerProjectiles.length < 180) {
+          this.state.playerProjectiles.push(...sparks);
+        }
 
         if (projectile.pierce <= 0) {
           break;
@@ -368,33 +647,36 @@ export class GameEngine {
       }
 
       if (projectile.pierce > 0 && projectile.life > 0) {
-        nextProjectiles.push(projectile);
+        projectiles[writeIndex] = projectile;
+        writeIndex += 1;
       }
     }
 
-    this.state.playerProjectiles = nextProjectiles;
+    projectiles.length = writeIndex;
   }
 
   private resolveEnemyProjectiles(): void {
-    const nextProjectiles: Projectile[] = [];
+    const projectiles = this.state.enemyProjectiles;
+    let writeIndex = 0;
 
-    for (const projectile of this.state.enemyProjectiles) {
-      if (circlesOverlap(projectile.position, projectile.radius, this.state.player.position, this.state.player.radius)) {
+    for (const projectile of projectiles) {
+      if (circlesOverlapSq(projectile.position, projectile.radius, this.state.player.position, this.state.player.radius)) {
         const result = damagePlayer(this.state.player, projectile.damage);
         this.state.player = result.player;
         this.state.screenShake = result.tookDamage ? 15 : this.state.screenShake;
         continue;
       }
 
-      nextProjectiles.push(projectile);
+      projectiles[writeIndex] = projectile;
+      writeIndex += 1;
     }
 
-    this.state.enemyProjectiles = nextProjectiles;
+    projectiles.length = writeIndex;
   }
 
   private resolveEnemyContact(): void {
     for (const enemy of this.state.enemies) {
-      if (!circlesOverlap(enemy.position, enemy.radius, this.state.player.position, this.state.player.radius)) {
+      if (!circlesOverlapSq(enemy.position, enemy.radius, this.state.player.position, this.state.player.radius)) {
         continue;
       }
 
@@ -405,17 +687,28 @@ export class GameEngine {
   }
 
   private collectDeadEnemies(): void {
-    const survivors: Enemy[] = [];
+    const enemies = this.state.enemies;
+    let writeIndex = 0;
 
-    for (const enemy of this.state.enemies) {
+    for (const enemy of enemies) {
       if (enemy.health > 0) {
-        survivors.push(enemy);
+        enemies[writeIndex] = enemy;
+        writeIndex += 1;
         continue;
       }
 
       this.state.stats.kills += 1;
       this.state.gems.push(createXpGem(enemy));
-      this.state.particles.push(...createDeathParticles(enemy, this.rng));
+      if (enemy.rank === 'elite') {
+        this.createRewardChest(enemy.position, 'elite');
+      }
+      const particleSlots = MAX_PARTICLES - this.state.particles.length;
+      if (particleSlots > 0) {
+        const particles = createDeathParticles(enemy, this.rng);
+        for (let index = 0; index < particles.length && index < particleSlots; index += 1) {
+          this.state.particles.push(particles[index]);
+        }
+      }
       this.state.screenShake = Math.max(this.state.screenShake, enemy.type === 'boss' ? 24 : 5);
 
       if (enemy.type === 'boss') {
@@ -423,43 +716,118 @@ export class GameEngine {
       }
     }
 
-    this.state.enemies = survivors;
+    enemies.length = writeIndex;
+  }
+
+  private createRewardChest(position: Vector, source: RewardChest['source']): void {
+    this.chestSequence += 1;
+    this.state.rewardChests.push({
+      id: `chest-${this.chestSequence}`,
+      position: { ...position },
+      radius: 18,
+      source,
+      opened: false,
+      life: 0
+    });
+    this.state.screenShake = Math.max(this.state.screenShake, 8);
   }
 
   private updateGems(dt: number): void {
-    const remaining = [];
+    const gems = this.state.gems;
+    const player = this.state.player;
+    const magnetRange = player.pickupRadius * 3.2;
+    const magnetRangeSq = magnetRange * magnetRange;
+    const pickupRadius = player.radius + player.pickupRadius * 0.16;
+    let writeIndex = 0;
 
-    for (const gem of this.state.gems) {
-      const gemDistance = distance(gem.position, this.state.player.position);
-      const magnetRange = this.state.player.pickupRadius * 3.2;
-      let position = { ...gem.position };
+    for (const gem of gems) {
+      const dx = player.position.x - gem.position.x;
+      const dy = player.position.y - gem.position.y;
+      const distanceSq = dx * dx + dy * dy;
 
-      if (gemDistance < magnetRange) {
-        const direction = normalizeVector({
-          x: this.state.player.position.x - gem.position.x,
-          y: this.state.player.position.y - gem.position.y
-        });
+      if (distanceSq < magnetRangeSq) {
+        const gemDistance = Math.sqrt(distanceSq);
+        const directionX = gemDistance === 0 ? 0 : dx / gemDistance;
+        const directionY = gemDistance === 0 ? 0 : dy / gemDistance;
         const speed = 240 + (1 - gemDistance / magnetRange) * 520;
-        position = {
-          x: gem.position.x + direction.x * speed * dt,
-          y: gem.position.y + direction.y * speed * dt
-        };
+        gem.position.x += directionX * speed * dt;
+        gem.position.y += directionY * speed * dt;
       }
 
-      if (circlesOverlap(position, gem.radius, this.state.player.position, this.state.player.radius + this.state.player.pickupRadius * 0.16)) {
+      if (circlesOverlapSq(gem.position, gem.radius, player.position, pickupRadius)) {
         this.state.xp += gem.value;
         this.resolveLevelUp();
         continue;
       }
 
-      remaining.push({
-        ...gem,
-        position,
-        life: gem.life + dt
-      });
+      gem.life += dt;
+      gems[writeIndex] = gem;
+      writeIndex += 1;
     }
 
-    this.state.gems = remaining;
+    gems.length = writeIndex;
+  }
+
+  private updateHealthPickups(dt: number): void {
+    const pickups = this.state.healthPickups;
+    const player = this.state.player;
+    const magnetRange = player.pickupRadius * 3.2;
+    const magnetRangeSq = magnetRange * magnetRange;
+    const collectRadius = player.radius + player.pickupRadius * 0.14;
+    let writeIndex = 0;
+
+    for (const pickup of pickups) {
+      const dx = player.position.x - pickup.position.x;
+      const dy = player.position.y - pickup.position.y;
+      const distanceSq = dx * dx + dy * dy;
+
+      if (distanceSq < magnetRangeSq) {
+        const distance = Math.sqrt(distanceSq);
+        const directionX = distance === 0 ? 0 : dx / distance;
+        const directionY = distance === 0 ? 0 : dy / distance;
+        const speed = 220 + (1 - distance / magnetRange) * 500;
+        pickup.position.x += directionX * speed * dt;
+        pickup.position.y += directionY * speed * dt;
+      }
+
+      if (circlesOverlapSq(pickup.position, pickup.radius, player.position, collectRadius)) {
+        player.health = Math.min(player.maxHealth, player.health + pickup.heal);
+        continue;
+      }
+
+      pickup.life += dt;
+
+      if (pickup.life <= pickup.maxLife) {
+        pickups[writeIndex] = pickup;
+        writeIndex += 1;
+      }
+    }
+
+    pickups.length = writeIndex;
+  }
+
+  private updateRewardChests(dt: number): void {
+    const chests = this.state.rewardChests;
+    let writeIndex = 0;
+
+    for (const chest of chests) {
+      chest.life += dt;
+
+      if (!chest.opened && circlesOverlapSq(chest.position, chest.radius, this.state.player.position, this.state.player.radius + 12)) {
+        chest.opened = true;
+        this.state.pendingChestChoices = createChestRewardChoices(this.state.player, this.state.weapons, this.rng);
+        this.state.phase = 'chestReward';
+        this.state.screenShake = 10;
+        continue;
+      }
+
+      if (!chest.opened) {
+        chests[writeIndex] = chest;
+        writeIndex += 1;
+      }
+    }
+
+    chests.length = writeIndex;
   }
 
   private resolveLevelUp(): void {
@@ -477,16 +845,30 @@ export class GameEngine {
 
   private updateEffects(dt: number): void {
     this.state.particles = updateParticles(this.state.particles, dt);
-    this.state.damageTexts = this.state.damageTexts
-      .map((text) => ({
-        ...text,
-        position: {
-          x: text.position.x + text.velocity.x * dt,
-          y: text.position.y + text.velocity.y * dt
-        },
-        life: text.life - dt
-      }))
-      .filter((text) => text.life > 0);
+    let writeIndex = 0;
+
+    for (const text of this.state.damageTexts) {
+      text.position.x += text.velocity.x * dt;
+      text.position.y += text.velocity.y * dt;
+      text.life -= dt;
+
+      if (text.life > 0) {
+        this.state.damageTexts[writeIndex] = text;
+        writeIndex += 1;
+      }
+    }
+
+    this.state.damageTexts.length = writeIndex;
+
+    let telegraphWriteIndex = 0;
+    for (const telegraph of this.state.telegraphs) {
+      telegraph.life -= dt;
+      if (telegraph.life > 0) {
+        this.state.telegraphs[telegraphWriteIndex] = telegraph;
+        telegraphWriteIndex += 1;
+      }
+    }
+    this.state.telegraphs.length = telegraphWriteIndex;
   }
 
   private checkEndStates(): void {
@@ -530,220 +912,901 @@ export class GameEngine {
     };
   }
 
-  private drawBackdrop(ctx: CanvasRenderingContext2D): void {
-    const gradient = ctx.createLinearGradient(0, 0, this.viewSize.width, this.viewSize.height);
-    gradient.addColorStop(0, '#050711');
-    gradient.addColorStop(0.55, '#101628');
-    gradient.addColorStop(1, '#180c1c');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
+  private getGlowScale(): number {
+    if (this.performanceMode) {
+      return 0;
+    }
+
+    const entities =
+      this.state.enemies.length +
+      this.state.playerProjectiles.length +
+      this.state.enemyProjectiles.length +
+      this.state.gems.length +
+      this.state.healthPickups.length +
+      this.state.particles.length +
+      this.state.damageTexts.length;
+
+    if (entities >= 90) {
+      return 0;
+    }
+
+    if (entities >= 55) {
+      return 0.35;
+    }
+
+    return 1;
   }
 
-  private drawArena(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = '#070914';
-    ctx.fillRect(0, 0, this.state.arena.width, this.state.arena.height);
+  private setGlow(ctx: CanvasRenderingContext2D, blur: number, color: string): void {
+    const scaledBlur = blur * this.glowScale;
+    ctx.shadowBlur = scaledBlur;
 
-    ctx.save();
-    ctx.globalAlpha = 0.28;
-    ctx.strokeStyle = '#1f4963';
-    ctx.lineWidth = 1;
+    if (scaledBlur > 0) {
+      ctx.shadowColor = color;
+    }
+  }
 
-    for (let x = 0; x <= this.state.arena.width; x += 96) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, this.state.arena.height);
-      ctx.stroke();
+  private pushDamageText(text: DamageText): void {
+    if (this.state.damageTexts.length >= MAX_DAMAGE_TEXTS) {
+      this.state.damageTexts.shift();
     }
 
-    for (let y = 0; y <= this.state.arena.height; y += 96) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(this.state.arena.width, y);
-      ctx.stroke();
+    this.state.damageTexts.push(text);
+  }
+
+  private addTelegraph(telegraph: Telegraph): void {
+    if (this.state.telegraphs.length >= MAX_TELEGRAPHS) {
+      this.state.telegraphs.shift();
+    }
+    this.state.telegraphs.push(telegraph);
+  }
+
+  private addBurstParticles(position: Vector, color: string, count: number): void {
+    const slots = MAX_PARTICLES - this.state.particles.length;
+
+    for (let index = 0; index < Math.min(slots, count); index += 1) {
+      const angle = this.rng() * Math.PI * 2;
+      this.state.particles.push({
+        id: `burst-${this.state.elapsed}-${index}-${this.rng()}`,
+        position: { ...position },
+        velocity: vectorFromAngle(angle, 80 + this.rng() * 220),
+        radius: 2 + this.rng() * 5,
+        color,
+        life: 0.35 + this.rng() * 0.55,
+        maxLife: 0.9
+      });
+    }
+  }
+
+  private ensureCosmic(): CosmicLayers {
+    if (!this.cosmic) {
+      this.cosmic = buildCosmicLayers(
+        this.viewSize.width,
+        this.viewSize.height,
+        this.state.arena.width,
+        this.state.arena.height,
+        this.rng
+      );
+    }
+    return this.cosmic;
+  }
+
+  private ensureRenderAssets(): RenderAssets {
+    if (!this.renderAssets) {
+      this.renderAssets = preloadRenderAssets();
     }
 
-    ctx.restore();
+    return this.renderAssets;
+  }
+
+  private drawSprite(ctx: CanvasRenderingContext2D, sprite: SpriteAsset, x: number, y: number, width: number, height = width): void {
+    ctx.drawImage(sprite.image, x - width / 2, y - height / 2, width, height);
+  }
+
+  private drawBackdrop(ctx: CanvasRenderingContext2D): void {
+    const layers = this.ensureCosmic();
+    const viewport = this.getViewport();
+    drawCosmicBackground(ctx, layers, viewport.x, viewport.y, this.viewSize.width, this.viewSize.height, this.performanceMode);
+  }
+
+  private isCircleVisible(position: Vector, radius: number, viewport: Viewport, padding = 0): boolean {
+    const paddedRadius = radius + padding;
+
+    return (
+      position.x + paddedRadius >= viewport.x &&
+      position.x - paddedRadius <= viewport.x + viewport.width &&
+      position.y + paddedRadius >= viewport.y &&
+      position.y - paddedRadius <= viewport.y + viewport.height
+    );
+  }
+
+  private drawArena(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const layers = this.ensureCosmic();
+    const padding = 40;
+    const sx = Math.max(0, Math.floor(viewport.x - padding));
+    const sy = Math.max(0, Math.floor(viewport.y - padding));
+    const sw = Math.min(this.state.arena.width - sx, Math.ceil(viewport.width + padding * 2));
+    const sh = Math.min(this.state.arena.height - sy, Math.ceil(viewport.height + padding * 2));
+
+    if (sw > 0 && sh > 0) {
+      ctx.drawImage(layers.floorTile, sx, sy, sw, sh, sx, sy, sw, sh);
+    }
+
     ctx.strokeStyle = '#5eead455';
     ctx.lineWidth = 5;
     ctx.strokeRect(0, 0, this.state.arena.width, this.state.arena.height);
   }
 
-  private drawGems(ctx: CanvasRenderingContext2D): void {
+  private drawGems(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const sprite = this.ensureRenderAssets().gem;
+
     for (const gem of this.state.gems) {
+      if (!this.isCircleVisible(gem.position, gem.radius, viewport, 18)) {
+        continue;
+      }
+
       const pulse = Math.sin(gem.life * 8) * 0.18 + 1;
       ctx.save();
-      ctx.translate(gem.position.x, gem.position.y);
-      ctx.rotate(Math.PI / 4);
-      ctx.shadowBlur = 16;
-      ctx.shadowColor = gem.color;
-      ctx.fillStyle = gem.color;
       ctx.globalAlpha = 0.85;
-      ctx.fillRect(-gem.radius * pulse, -gem.radius * pulse, gem.radius * 2 * pulse, gem.radius * 2 * pulse);
+      this.drawSprite(ctx, sprite, gem.position.x, gem.position.y, gem.radius * 3.2 * pulse);
       ctx.restore();
     }
   }
 
-  private drawProjectiles(ctx: CanvasRenderingContext2D, projectiles: Projectile[]): void {
+  private drawHealthPickups(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    for (const pickup of this.state.healthPickups) {
+      if (!this.isCircleVisible(pickup.position, pickup.radius, viewport, 24)) {
+        continue;
+      }
+
+      this.drawHealthPickup(ctx, pickup);
+    }
+  }
+
+  private drawHealthPickup(ctx: CanvasRenderingContext2D, pickup: HealthPickup): void {
+    const pulse = 1 + Math.sin((this.state.elapsed + pickup.life) * 6) * 0.08;
+    const sprite = this.ensureRenderAssets().healthPickup;
+    this.drawSprite(ctx, sprite, pickup.position.x, pickup.position.y, pickup.radius * 4.1 * pulse);
+  }
+
+  private drawObjectives(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    for (const objective of this.state.objectives) {
+      if (!this.isCircleVisible(objective.position, objective.radius, viewport, 50)) {
+        continue;
+      }
+
+      const progress = clamp(objective.captureProgress / objective.requiredCapture, 0, 1);
+      const pulse = 1 + Math.sin((this.state.elapsed - objective.spawnedAt) * 5) * 0.04;
+
+      ctx.save();
+      ctx.translate(objective.position.x, objective.position.y);
+      ctx.globalAlpha = objective.state === 'active' ? 1 : 0.45;
+      this.setGlow(ctx, 24, objective.state === 'cursed' ? '#ff335f' : '#5eead4');
+      ctx.strokeStyle = objective.state === 'cursed' ? '#ff335f' : '#5eead4';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, objective.radius * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(0, 0, objective.radius * 0.72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  private drawRewardChests(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const assets = this.ensureRenderAssets();
+
+    for (const chest of this.state.rewardChests) {
+      if (!this.isCircleVisible(chest.position, chest.radius, viewport, 24)) {
+        continue;
+      }
+
+      const pulse = 1 + Math.sin((this.state.elapsed + chest.life) * 7) * 0.08;
+      const sprite = chest.source === 'elite' ? assets.rewardChest.elite : assets.rewardChest.objective;
+      this.drawSprite(ctx, sprite, chest.position.x, chest.position.y, chest.radius * 4 * pulse);
+    }
+  }
+
+  private drawTelegraphs(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    for (const telegraph of this.state.telegraphs) {
+      if (!this.isCircleVisible(telegraph.position, telegraph.length, viewport, 0)) {
+        continue;
+      }
+
+      const alpha = clamp(telegraph.life / telegraph.maxLife, 0, 1);
+      ctx.save();
+      ctx.translate(telegraph.position.x, telegraph.position.y);
+      ctx.rotate(telegraph.angle);
+      ctx.globalAlpha = alpha * 0.45;
+      ctx.fillStyle = telegraph.color;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.rect(0, -telegraph.width / 2, telegraph.length, telegraph.width);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  private drawProjectiles(ctx: CanvasRenderingContext2D, projectiles: Projectile[], viewport: Viewport): void {
+    const sprites = this.ensureRenderAssets().projectiles;
+
     for (const projectile of projectiles) {
+      if (!this.isCircleVisible(projectile.position, projectile.radius, viewport, projectile.kind === 'arrow' ? 30 : 20)) {
+        continue;
+      }
+
       ctx.save();
       ctx.globalAlpha = projectile.alpha ?? 1;
-      ctx.shadowBlur = projectile.kind === 'pulse' ? 24 : 14;
-      ctx.shadowColor = projectile.color;
-      ctx.strokeStyle = projectile.color;
-      ctx.fillStyle = projectile.color;
 
       if (projectile.kind === 'pulse') {
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(projectile.position.x, projectile.position.y, projectile.radius, 0, Math.PI * 2);
-        ctx.stroke();
+        this.drawSprite(ctx, sprites.pulse, projectile.position.x, projectile.position.y, projectile.radius * 2.25);
       } else if (projectile.kind === 'arrow') {
         const angle = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+        const speed = Math.hypot(projectile.velocity.x, projectile.velocity.y) || 1;
+
+        if (!this.fastRender) {
+          ctx.globalAlpha = (projectile.alpha ?? 1) * 0.32;
+          ctx.strokeStyle = projectile.color;
+          ctx.lineWidth = Math.max(2, projectile.radius * 0.45);
+          ctx.beginPath();
+          ctx.moveTo(projectile.position.x - (projectile.velocity.x / speed) * projectile.radius * 4.2, projectile.position.y - (projectile.velocity.y / speed) * projectile.radius * 4.2);
+          ctx.lineTo(projectile.position.x, projectile.position.y);
+          ctx.stroke();
+          ctx.globalAlpha = projectile.alpha ?? 1;
+        }
+
         ctx.translate(projectile.position.x, projectile.position.y);
         ctx.rotate(angle);
-        ctx.beginPath();
-        ctx.moveTo(16, 0);
-        ctx.lineTo(-12, -5);
-        ctx.lineTo(-7, 0);
-        ctx.lineTo(-12, 5);
-        ctx.closePath();
-        ctx.fill();
+        this.drawSprite(ctx, sprites.arrow, 0, 0, projectile.radius * 7.2, projectile.radius * 4.2);
       } else {
-        ctx.beginPath();
-        ctx.arc(projectile.position.x, projectile.position.y, projectile.radius, 0, Math.PI * 2);
-        ctx.fill();
+        const sprite = projectile.kind === 'ranged' ? sprites.ranged : sprites.bolt;
+        this.drawSprite(ctx, sprite, projectile.position.x, projectile.position.y, projectile.radius * 5);
       }
 
       ctx.restore();
     }
   }
 
-  private drawEnemies(ctx: CanvasRenderingContext2D): void {
+  private drawEnemies(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const assets = this.ensureRenderAssets();
+
     for (const enemy of this.state.enemies) {
+      if (!this.isCircleVisible(enemy.position, enemy.radius, viewport, enemy.type === 'boss' ? 80 : 42)) {
+        continue;
+      }
+
       ctx.save();
       ctx.translate(enemy.position.x, enemy.position.y);
-      ctx.shadowBlur = enemy.type === 'boss' ? 32 : 18;
-      ctx.shadowColor = enemy.color;
-      ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
-      ctx.strokeStyle = '#ffffff88';
-      ctx.lineWidth = 2;
+      this.applyHitSquash(ctx, enemy.hitFlash);
 
+      if (enemy.type === 'ranged') {
+        const charge = clamp(1 - enemy.cooldown / 0.5, 0, 1);
+        if (charge > 0.7) {
+          const jitterPhase = this.state.elapsed * 64 + this.hashId(enemy.id) * 0.13;
+          ctx.translate(Math.sin(jitterPhase) * 0.75, Math.cos(jitterPhase * 1.41) * 0.75);
+        }
+      }
+
+      let modelRotation = 0;
       if (enemy.type === 'fast') {
-        this.drawPolygon(ctx, enemy.radius, 3, this.state.elapsed * 2);
-      } else if (enemy.type === 'tank') {
-        this.drawPolygon(ctx, enemy.radius, 6, this.state.elapsed * 0.7);
-      } else if (enemy.type === 'ranged') {
-        this.drawPolygon(ctx, enemy.radius, 4, Math.PI / 4);
-      } else if (enemy.type === 'boss') {
-        this.drawBoss(ctx, enemy);
-      } else {
-        ctx.beginPath();
-        ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+        modelRotation = speed > 1
+          ? Math.atan2(enemy.velocity.y, enemy.velocity.x)
+          : Math.atan2(this.state.player.position.y - enemy.position.y, this.state.player.position.x - enemy.position.x);
+      } else if (enemy.type === 'basic') {
+        modelRotation = Math.atan2(this.state.player.position.y - enemy.position.y, this.state.player.position.x - enemy.position.x);
+      }
+
+      if (modelRotation !== 0) {
+        ctx.rotate(modelRotation);
+      }
+
+      const spriteGroup = assets.enemies[enemy.type];
+      const sprite = this.fastRender ? spriteGroup.lite : enemy.hitFlash > 0 ? spriteGroup.hit : spriteGroup.normal;
+      const scale = enemy.type === 'boss' ? 3.75 : enemy.type === 'tank' ? 3.35 : enemy.type === 'fast' ? 3.8 : 3.25;
+      this.drawSprite(ctx, sprite, 0, 0, enemy.radius * scale);
+
+      if (modelRotation !== 0) {
+        ctx.rotate(-modelRotation);
+      }
+
+      if (!this.fastRender && enemy.type === 'ranged') {
+        this.drawRangedChargeOverlay(ctx, enemy);
+      }
+
+      if (!this.fastRender && enemy.type === 'boss') {
+        this.drawBossRingOverlay(ctx, enemy);
       }
 
       if (enemy.health < enemy.maxHealth || enemy.type === 'boss') {
         this.drawEnemyHealth(ctx, enemy);
       }
 
+      if (enemy.rank === 'elite') {
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius + 7 + Math.sin(this.state.elapsed * 7) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       ctx.restore();
     }
   }
 
-  private drawBoss(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+  private hashId(id: string): number {
+    let hash = 0;
+    for (let index = 0; index < id.length; index += 1) {
+      hash = (hash * 31 + id.charCodeAt(index)) | 0;
+    }
+    return Math.abs(hash);
+  }
+
+  private drawRangedChargeOverlay(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const charge = clamp(1 - enemy.cooldown / 0.5, 0, 1);
+
+    if (charge <= 0) {
+      return;
+    }
+
+    const px = this.state.player.position.x - enemy.position.x;
+    const py = this.state.player.position.y - enemy.position.y;
+    const plen = Math.hypot(px, py) || 1;
+    const coreR = enemy.radius * (0.35 + charge * 0.45);
+
+    ctx.save();
+    ctx.globalAlpha = charge * 0.68;
+    ctx.fillStyle = '#fff3b0';
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, coreR, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#fff3b0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo((px / plen) * enemy.radius * 1.45, (py / plen) * enemy.radius * 1.45);
     ctx.stroke();
-    ctx.globalAlpha = 0.45;
+    ctx.restore();
+  }
+
+  private drawBossRingOverlay(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 4;
     ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius + 12 + Math.sin(this.state.elapsed * 4) * 4, 0, Math.PI * 2);
+    ctx.arc(0, 0, r + 16, t * 1.2, t * 1.2 + Math.PI * 1.1);
     ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#18040c';
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ff8aa1';
     ctx.beginPath();
-    ctx.arc(-16, -8, 7, 0, Math.PI * 2);
-    ctx.arc(16, -8, 7, 0, Math.PI * 2);
+    ctx.arc(0, 0, r + 24, -t * 0.85, -t * 0.85 + Math.PI * 0.6);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawEnemyLite(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const fill = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+    const stroke = 'rgba(255,255,255,0.55)';
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = enemy.type === 'boss' ? 3 : 1.5;
+
+    if (enemy.type === 'fast') {
+      const angle = Math.atan2(enemy.velocity.y, enemy.velocity.x);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(r * 1.2, 0);
+      ctx.lineTo(-r * 0.7, -r * 0.85);
+      ctx.lineTo(-r * 0.25, 0);
+      ctx.lineTo(-r * 0.7, r * 0.85);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      return;
+    }
+
+    if (enemy.type === 'tank') {
+      this.drawGradientPolygon(ctx, r, 6, Math.PI / 6, fill, stroke, 1.5);
+      return;
+    }
+
+    if (enemy.type === 'ranged') {
+      this.drawGradientPolygon(ctx, r, 4, Math.PI / 4, fill, stroke, 1.5);
+      return;
+    }
+
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+  }
+
+  private drawBasicEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const idHash = enemy.id.charCodeAt(enemy.id.length - 1);
+    const haloAlpha = 0.8 + Math.sin(t * 3 + idHash) * 0.2;
+    const px = this.state.player.position.x;
+    const py = this.state.player.position.y;
+    this.applyHitSquash(ctx, enemy.hitFlash);
+
+    // Halo
+    ctx.save();
+    ctx.globalAlpha = haloAlpha;
+    this.drawRadialGlow(ctx, r * 0.3, r * 1.9, 'rgba(124,247,255,0.5)', 'rgba(124,247,255,0)');
+    ctx.restore();
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    bodyGrad.addColorStop(0, '#0a3a44');
+    bodyGrad.addColorStop(0.6, '#1ec9d6');
+    bodyGrad.addColorStop(1, '#7cf7ff');
+    this.setGlow(ctx, 12, '#7cf7ff');
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : bodyGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(186,252,255,0.67)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Eyes oriented toward player
+    const dx = px - enemy.position.x;
+    const dy = py - enemy.position.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const aimX = dx / len;
+    const aimY = dy / len;
+    const perpX = -aimY;
+    const perpY = aimX;
+    const eyeOffset = r * 0.35;
+    const eyeR = r * 0.14;
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#0b0f1a';
+
+    for (const side of [-1, 1]) {
+      const ex = aimX * eyeOffset + perpX * side * r * 0.28;
+      const ey = aimY * eyeOffset + perpY * side * r * 0.28;
+      ctx.beginPath();
+      ctx.arc(ex, ey, eyeR, 0, Math.PI * 2);
+      ctx.fill();
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.beginPath();
+      ctx.arc(ex + eyeR * 0.3, ey - eyeR * 0.3, eyeR * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0b0f1a';
+    }
+
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
+  }
+
+  private drawFastEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const idHash = enemy.id.charCodeAt(enemy.id.length - 1);
+    const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+    this.applyHitSquash(ctx, enemy.hitFlash);
+    const angle = speed > 1
+      ? Math.atan2(enemy.velocity.y, enemy.velocity.x)
+      : Math.atan2(
+          this.state.player.position.y - enemy.position.y,
+          this.state.player.position.x - enemy.position.x
+        );
+
+    // Motion trail (only when moving fast)
+    if (speed > 90) {
+      ctx.save();
+      for (let k = 1; k <= 3; k++) {
+        const tx = (-enemy.velocity.x / speed) * r * k * 0.55;
+        const ty = (-enemy.velocity.y / speed) * r * k * 0.55;
+        ctx.globalAlpha = 0.45 * (1 - k / 4);
+        ctx.fillStyle = '#ff5edb';
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(r * 1.2, 0);
+        ctx.lineTo(-r * 0.7, -r * 0.85);
+        ctx.lineTo(-r * 0.25, 0);
+        ctx.lineTo(-r * 0.7, r * 0.85);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // Body chevron
+    ctx.save();
+    ctx.rotate(angle);
+
+    const prowGrad = ctx.createLinearGradient(-r * 0.7, 0, r * 1.2, 0);
+    prowGrad.addColorStop(0, '#ff5edb');
+    prowGrad.addColorStop(1, '#ffb8f0');
+    this.setGlow(ctx, 14, '#ff5edb');
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : prowGrad;
+    ctx.strokeStyle = 'rgba(255,232,250,0.67)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(r * 1.2, 0);
+    ctx.lineTo(-r * 0.7, -r * 0.85);
+    ctx.lineTo(-r * 0.25, 0);
+    ctx.lineTo(-r * 0.7, r * 0.85);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Tail spark
+    const sparkScale = 0.85 + Math.sin(t * 8 + idHash) * 0.15;
+    this.setGlow(ctx, 8, '#fff7ad');
+    ctx.fillStyle = '#fff7ad';
+    ctx.beginPath();
+    ctx.arc(-r * 0.7, 0, r * 0.18 * sparkScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
+  }
+
+  private drawTankEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const rotation = Math.PI / 6; // flat-top hex, no drift
+    this.applyHitSquash(ctx, enemy.hitFlash);
+
+    // Ground shadow
+    this.drawShadowBlob(ctx, r * 1.15, r * 0.35, r * 0.6, 0.55);
+
+    // Hex body with metallic gradient
+    const hexGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    hexGrad.addColorStop(0, '#0e0a1f');
+    hexGrad.addColorStop(0.55, '#3a2a6e');
+    hexGrad.addColorStop(1, '#a78bfa');
+    this.setGlow(ctx, 14, '#a78bfa');
+    this.drawGradientPolygon(ctx, r, 6, rotation, enemy.hitFlash > 0 ? '#ffffff' : hexGrad, '#dcd0ff', 2);
+
+    // Plate spokes
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(20,8,48,0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = rotation + (Math.PI * 2 * i) / 6;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+    }
+    ctx.stroke();
+
+    // Rivets at 55% radius along each spoke
+    ctx.fillStyle = '#ede9fe';
+    for (let i = 0; i < 6; i++) {
+      const angle = rotation + (Math.PI * 2 * i) / 6;
+      ctx.beginPath();
+      ctx.arc(Math.cos(angle) * r * 0.55, Math.sin(angle) * r * 0.55, r * 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
+  }
+
+  private drawRangedEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const c = clamp(1 - enemy.cooldown / 0.5, 0, 1);
+    this.applyHitSquash(ctx, enemy.hitFlash);
+
+    // Pre-fire jitter
+    if (c > 0.7) {
+      ctx.translate((this.rng() - 0.5) * 1.5, (this.rng() - 0.5) * 1.5);
+    }
+
+    // Diamond body (lit-lantern: light center → dark edge)
+    const diamondGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    diamondGrad.addColorStop(0, '#fff3b0');
+    diamondGrad.addColorStop(0.55, '#ffb84d');
+    diamondGrad.addColorStop(1, '#6b3a05');
+    this.setGlow(ctx, 12, '#ffd166');
+    this.drawGradientPolygon(ctx, r, 4, Math.PI / 4, enemy.hitFlash > 0 ? '#ffffff' : diamondGrad, '#fff3b0', 2);
+
+    // Charging core
+    const coreR = r * (0.35 + c * 0.45);
+    this.setGlow(ctx, 8 + c * 22, '#fff3b0');
+    this.drawRadialGlow(ctx, 0, coreR, 'rgba(255,255,255,0.95)', 'rgba(255,209,102,0)');
+
+    // Aim line toward player when charging
+    if (c > 0) {
+      const px = this.state.player.position.x - enemy.position.x;
+      const py = this.state.player.position.y - enemy.position.y;
+      const plen = Math.hypot(px, py) || 1;
+      ctx.save();
+      ctx.globalAlpha = c * 0.67;
+      ctx.strokeStyle = '#fff3b0';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo((px / plen) * r * 1.4, (py / plen) * r * 1.4);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    void t; // used implicitly via elapsed-based state
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
+  }
+
+  private drawBossEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
+    const r = enemy.radius;
+    const t = this.state.elapsed;
+    const px = this.state.player.position.x;
+    const py = this.state.player.position.y;
+    this.applyHitSquash(ctx, enemy.hitFlash);
+
+    // Outer aura (two concentric gradients, no shadowBlur)
+    const outerAuraR = r * 1.9 + Math.sin(t * 1.8) * 4;
+    const innerAuraR = r * 1.35 + Math.sin(t * 3) * 3;
+    ctx.shadowBlur = 0;
+    this.drawRadialGlow(ctx, r * 0.6, outerAuraR, 'rgba(255,51,95,0.45)', 'rgba(255,51,95,0)');
+    this.drawRadialGlow(ctx, r * 0.4, innerAuraR, 'rgba(255,150,90,0.55)', 'rgba(255,51,95,0)');
+
+    // Body
+    const bodyGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    bodyGrad.addColorStop(0, '#1a0408');
+    bodyGrad.addColorStop(0.55, '#6e0c1f');
+    bodyGrad.addColorStop(1, '#ff335f');
+    this.setGlow(ctx, 28, '#ff335f');
+    ctx.fillStyle = enemy.hitFlash > 0 ? '#ffffff' : bodyGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,209,102,0.67)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Rotating rune arcs
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 4;
+    this.setGlow(ctx, 14, '#ffd166');
+    ctx.strokeStyle = '#ffd166';
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 16, t * 1.2, t * 1.2 + Math.PI * 1.1);
+    ctx.stroke();
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#ff8aa1';
+    ctx.strokeStyle = '#ff8aa1';
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 24, -t * 0.85, -t * 0.85 + Math.PI * 0.6);
+    ctx.stroke();
+    ctx.restore();
+
+    // Tracking eyes
+    const dx = px - enemy.position.x;
+    const dy = py - enemy.position.y;
+    const aimLen = Math.hypot(dx, dy) || 1;
+    const aimX = dx / aimLen;
+    const aimY = dy / aimLen;
+
+    ctx.shadowBlur = 0;
+
+    for (const side of [-1, 1]) {
+      const ex = side * 18;
+      const ey = -8;
+      // Sclera
+      ctx.fillStyle = '#fff3b0';
+      ctx.beginPath();
+      ctx.arc(ex, ey, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // Pupil offset toward player
+      ctx.fillStyle = '#18040c';
+      ctx.beginPath();
+      ctx.arc(ex + aimX * 3, ey + aimY * 3, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(ex + aimX * 2 + 1.5, ey + aimY * 2 - 1.5, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    this.drawHitImpact(ctx, r, enemy.hitFlash);
   }
 
   private drawEnemyHealth(ctx: CanvasRenderingContext2D, enemy: Enemy): void {
-    const width = enemy.type === 'boss' ? 130 : 42;
-    const y = -enemy.radius - 18;
+    const isBoss = enemy.type === 'boss';
+    const width = isBoss ? 170 : 42;
+    const height = isBoss ? 9 : 6;
+    const y = -enemy.radius - 14;
     const ratio = clamp(enemy.health / enemy.maxHealth, 0, 1);
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#180d16';
-    ctx.fillRect(-width / 2, y, width, 5);
-    ctx.fillStyle = enemy.type === 'boss' ? '#ff335f' : '#5eead4';
-    ctx.fillRect(-width / 2, y, width * ratio, 5);
+    this.drawHealthBarRounded(ctx, width, height, y, ratio, isBoss);
   }
 
   private drawOrbitWeapon(ctx: CanvasRenderingContext2D): void {
-    const weapon = this.state.weapons.find((item) => item.id === 'orbit' && item.unlocked);
+    for (const runtime of this.getRenderablePlayers()) {
+      this.drawRuntimeOrbitWeapon(ctx, runtime);
+    }
+  }
+
+  private drawRuntimeOrbitWeapon(ctx: CanvasRenderingContext2D, runtime: PlayerRuntime): void {
+    const weapon = runtime.weapons.find((item) => item.id === 'orbit' && item.unlocked);
 
     if (!weapon) {
       return;
     }
 
-    const bladeCount = 1 + Math.floor((weapon.level + 1) / 2);
-    const orbitRadius = weapon.range + weapon.level * 9;
+    const sprite = weapon.evolved ? this.ensureRenderAssets().orbit.evolved : this.ensureRenderAssets().orbit.normal;
+    const bladeCount = (1 + Math.floor((weapon.level + 1) / 2)) + (weapon.evolved ? 1 : 0);
+    const orbitRadius = (weapon.range + weapon.level * 9) * runtime.player.areaMultiplier * (weapon.evolved ? 1.28 : 1);
 
     for (let index = 0; index < bladeCount; index += 1) {
       const angle = this.state.orbitAngle + (Math.PI * 2 * index) / bladeCount;
       const position = {
-        x: this.state.player.position.x + Math.cos(angle) * orbitRadius,
-        y: this.state.player.position.y + Math.sin(angle) * orbitRadius
+        x: runtime.player.position.x + Math.cos(angle) * orbitRadius,
+        y: runtime.player.position.y + Math.sin(angle) * orbitRadius
       };
       ctx.save();
       ctx.translate(position.x, position.y);
       ctx.rotate(angle);
-      ctx.shadowBlur = 18;
-      ctx.shadowColor = '#f0abfc';
-      ctx.fillStyle = '#f0abfc';
+      this.drawSprite(ctx, sprite, 0, 0, weapon.evolved ? 58 : 46, weapon.evolved ? 34 : 28);
+      ctx.restore();
+    }
+  }
+
+  private drawEdgeMarkers(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
+    const targets = [
+      ...this.state.objectives
+        .filter((objective) => objective.state === 'active')
+        .map((objective) => ({ position: objective.position, color: '#5eead4', size: 13 })),
+      ...this.state.rewardChests.map((chest) => ({ position: chest.position, color: '#ffd166', size: 12 })),
+      ...this.state.enemies
+        .filter((enemy) => enemy.rank === 'elite' || enemy.type === 'boss')
+        .map((enemy) => ({ position: enemy.position, color: enemy.type === 'boss' ? '#ff335f' : '#ffd166', size: enemy.type === 'boss' ? 16 : 12 }))
+    ];
+
+    for (const target of targets) {
+      const screenX = target.position.x - viewport.x;
+      const screenY = target.position.y - viewport.y;
+
+      if (screenX >= 20 && screenX <= this.viewSize.width - 20 && screenY >= 20 && screenY <= this.viewSize.height - 20) {
+        continue;
+      }
+
+      const center = { x: this.viewSize.width / 2, y: this.viewSize.height / 2 };
+      const angle = Math.atan2(screenY - center.y, screenX - center.x);
+      const x = clamp(screenX, 22, this.viewSize.width - 22);
+      const y = clamp(screenY, 22, this.viewSize.height - 22);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = target.color;
+      this.setGlow(ctx, 14, target.color);
       ctx.beginPath();
-      ctx.ellipse(0, 0, 17, 7, 0, 0, Math.PI * 2);
+      ctx.moveTo(target.size, 0);
+      ctx.lineTo(-target.size * 0.65, -target.size * 0.55);
+      ctx.lineTo(-target.size * 0.65, target.size * 0.55);
+      ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D): void {
-    const player = this.state.player;
-    const flash = player.invulnerableTimer > 0 && Math.floor(player.invulnerableTimer * 18) % 2 === 0;
+    for (const runtime of this.getRenderablePlayers()) {
+      this.drawRuntimePlayer(ctx, runtime);
+    }
+  }
+
+  private getRenderablePlayers(): PlayerRuntime[] {
+    const players = (this.state as GameState & { players?: PlayerRuntime[] }).players;
+
+    if (players) {
+      return players.filter((runtime) => runtime.status !== 'disconnected');
+    }
+
+    return [{
+      id: 'solo',
+      name: 'Player',
+      color: '#5eead4',
+      status: this.state.player.health <= 0 ? 'downed' : 'active',
+      player: this.state.player,
+      weapons: this.state.weapons,
+      level: this.state.level,
+      xp: this.state.xp,
+      xpToNext: this.state.xpToNext,
+      upgradeChoices: this.state.upgradeChoices,
+      pendingChestChoices: this.state.pendingChestChoices,
+      stats: this.state.stats,
+      reviveProgress: 0
+    }];
+  }
+
+  private drawRuntimePlayer(ctx: CanvasRenderingContext2D, runtime: PlayerRuntime): void {
+    const player = runtime.player;
+    const r = player.radius;
+    const t = this.state.elapsed;
+    const iframes = player.invulnerableTimer > 0 || runtime.status === 'choosing';
+    const sprite = iframes ? this.ensureRenderAssets().playerHit : this.ensureRenderAssets().player;
 
     ctx.save();
     ctx.translate(player.position.x, player.position.y);
     ctx.rotate(player.facingAngle);
-    ctx.globalAlpha = flash ? 0.42 : 1;
-    ctx.shadowBlur = 26;
-    ctx.shadowColor = '#5eead4';
-    ctx.fillStyle = '#111827';
-    ctx.strokeStyle = '#5eead4';
-    ctx.lineWidth = 3;
+    ctx.globalAlpha = runtime.status === 'downed' ? 0.45 : iframes ? 0.88 : 1;
+    this.drawSprite(ctx, sprite, 0, 0, r * 4.2);
+
+    // Invulnerability shimmer rings
+    if (iframes) {
+      const shimmerAlpha = clamp(player.invulnerableTimer / 0.9, 0, 1) * 0.85;
+      ctx.shadowBlur = this.fastRender ? 0 : 10 * this.glowScale;
+
+      ctx.save();
+      ctx.rotate(t * 4);
+      ctx.globalAlpha = shimmerAlpha;
+      ctx.strokeStyle = '#a7f3d0';
+      ctx.lineWidth = 2;
+      if (this.glowScale > 0) ctx.shadowColor = '#a7f3d0';
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 6, 0, (Math.PI * 2) / 3);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.rotate(-t * 5.2);
+      ctx.globalAlpha = shimmerAlpha;
+      ctx.strokeStyle = '#67e8f9';
+      ctx.lineWidth = 2;
+      if (this.glowScale > 0) ctx.shadowColor = '#67e8f9';
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 6, Math.PI, Math.PI + (Math.PI * 2) / 3);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.rotate(-player.facingAngle);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = runtime.color;
     ctx.beginPath();
-    ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+    ctx.arc(0, -r * 2.65, 5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#ffd166';
-    ctx.beginPath();
-    ctx.moveTo(player.radius + 8, 0);
-    ctx.lineTo(4, -7);
-    ctx.lineTo(4, 7);
-    ctx.closePath();
-    ctx.fill();
+
+    if (runtime.status === 'downed') {
+      const progress = clamp(runtime.reviveProgress / 3, 0, 1);
+      ctx.strokeStyle = runtime.color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.75, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.stroke();
+    }
+
     ctx.restore();
   }
 
-  private drawParticles(ctx: CanvasRenderingContext2D): void {
+  private drawParticles(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
     for (const particle of this.state.particles) {
+      if (!this.isCircleVisible(particle.position, particle.radius, viewport, 14)) {
+        continue;
+      }
+
       ctx.save();
       ctx.globalAlpha = clamp(particle.life / particle.maxLife, 0, 1);
       ctx.fillStyle = particle.color;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = particle.color;
+      if (!this.fastRender) {
+        this.setGlow(ctx, 10, particle.color);
+      } else {
+        ctx.shadowBlur = 0;
+      }
       ctx.beginPath();
       ctx.arc(particle.position.x, particle.position.y, particle.radius, 0, Math.PI * 2);
       ctx.fill();
@@ -751,47 +1814,140 @@ export class GameEngine {
     }
   }
 
-  private drawDamageTexts(ctx: CanvasRenderingContext2D): void {
+  private drawDamageTexts(ctx: CanvasRenderingContext2D, viewport: Viewport): void {
     ctx.textAlign = 'center';
     ctx.font = '700 14px Inter, system-ui, sans-serif';
 
     for (const text of this.state.damageTexts) {
+      if (!this.isCircleVisible(text.position, 4, viewport, 32)) {
+        continue;
+      }
+
       ctx.save();
       ctx.globalAlpha = clamp(text.life / text.maxLife, 0, 1);
       ctx.fillStyle = text.color;
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = text.color;
+      if (!this.fastRender) {
+        this.setGlow(ctx, 8, text.color);
+      } else {
+        ctx.shadowBlur = 0;
+      }
       ctx.fillText(String(text.amount), text.position.x, text.position.y);
       ctx.restore();
     }
-  }
-
-  private drawPolygon(ctx: CanvasRenderingContext2D, radius: number, sides: number, rotation: number): void {
-    ctx.beginPath();
-
-    for (let index = 0; index < sides; index += 1) {
-      const angle = rotation + (Math.PI * 2 * index) / sides;
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
   }
 
   private drawVignette(ctx: CanvasRenderingContext2D): void {
     const radius = Math.max(this.viewSize.width, this.viewSize.height) * 0.72;
     const gradient = ctx.createRadialGradient(this.viewSize.width / 2, this.viewSize.height / 2, radius * 0.2, this.viewSize.width / 2, this.viewSize.height / 2, radius);
     gradient.addColorStop(0, 'rgba(0,0,0,0)');
-    gradient.addColorStop(1, 'rgba(0,0,0,0.62)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.40)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
+  }
+
+  private drawRadialGlow(ctx: CanvasRenderingContext2D, innerR: number, outerR: number, innerColor: string, outerColor = 'rgba(0,0,0,0)'): void {
+    const g = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR);
+    g.addColorStop(0, innerColor);
+    g.addColorStop(1, outerColor);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawShadowBlob(ctx: CanvasRenderingContext2D, rx: number, ry: number, yOffset: number, alpha = 0.45): void {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000000';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.ellipse(0, yOffset, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawGradientPolygon(ctx: CanvasRenderingContext2D, radius: number, sides: number, rotation: number, fill: CanvasGradient | string, stroke?: string, lineWidth = 2): void {
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const angle = rotation + (Math.PI * 2 * i) / sides;
+      if (i === 0) {
+        ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+      } else {
+        ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+      }
+    }
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke !== undefined) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+  }
+
+  private drawHealthBarRounded(ctx: CanvasRenderingContext2D, width: number, height: number, y: number, ratio: number, isBoss: boolean): void {
+    const x = -width / 2;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(8,4,18,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, height / 2);
+    ctx.fill();
+
+    if (ratio > 0) {
+      const fillWidth = Math.max(height, width * ratio);
+      const grad = ctx.createLinearGradient(x, 0, x + width, 0);
+
+      if (ratio > 0.6) {
+        grad.addColorStop(0, '#5eead4');
+        grad.addColorStop(1, '#38bdf8');
+      } else if (ratio > 0.3) {
+        grad.addColorStop(0, '#fde68a');
+        grad.addColorStop(1, '#f59e0b');
+      } else {
+        grad.addColorStop(0, '#fb7185');
+        grad.addColorStop(1, '#ef4444');
+      }
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(x, y, fillWidth, height, height / 2);
+      ctx.fill();
+    }
+
+    if (isBoss) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(0, y + height);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,209,102,0.53)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, width, height, height / 2);
+      ctx.stroke();
+    }
+  }
+
+  private drawHitImpact(ctx: CanvasRenderingContext2D, radius: number, hitFlash: number): void {
+    if (hitFlash <= 0) return;
+    const progress = (0.12 - hitFlash) / 0.12;
+    ctx.save();
+    ctx.globalAlpha = hitFlash / 0.12;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    this.setGlow(ctx, 10, '#ffffff');
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * (1 + progress), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private applyHitSquash(ctx: CanvasRenderingContext2D, hitFlash: number): void {
+    if (hitFlash > 0) {
+      ctx.scale(1 + hitFlash * 0.6, 1 - hitFlash * 0.6);
+    }
   }
 }

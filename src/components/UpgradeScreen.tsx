@@ -1,29 +1,34 @@
 import type { UpgradeOption } from '../game/types';
-import { StatIconMap, WeaponIconMap } from './icons';
+import { StarIcon, StatIconMap, WeaponIconMap } from './icons';
 
 interface UpgradeScreenProps {
   choices: UpgradeOption[];
+  label?: string;
+  title?: string;
   onChoose: (upgradeId: string) => void;
 }
 
 const PIP_COUNT = 8;
 
 function BoonCard({ choice, index, onChoose }: { choice: UpgradeOption; index: number; onChoose: (id: string) => void }) {
-  const isWeapon = choice.kind === 'weapon';
+  const isWeapon = choice.kind === 'weapon' || choice.kind === 'evolution';
   const Icon = isWeapon
     ? (choice.weaponId ? WeaponIconMap[choice.weaponId] : null)
-    : (choice.stat ? StatIconMap[choice.stat] : null);
+    : choice.kind === 'passive'
+      ? StarIcon
+      : (choice.stat ? StatIconMap[choice.stat] : null);
 
   const currentLevel = isWeapon && choice.weaponId ? 1 : 0;
+  const tag = choice.kind === 'evolution' ? 'Evolution' : choice.kind === 'passive' ? 'Passive' : isWeapon ? 'Boon' : 'Stat';
 
   return (
     <button
-      className={`upgrade-card upgrade-card--${isWeapon ? 'weapon' : 'stat'}`}
+      className={`upgrade-card upgrade-card--${choice.kind === 'evolution' ? 'evolution' : isWeapon ? 'weapon' : choice.kind === 'passive' ? 'passive' : 'stat'}`}
       style={{ '--idx': index } as React.CSSProperties}
       type="button"
       onClick={() => onChoose(choice.id)}
     >
-      <span className="boon-tag">{isWeapon ? 'Boon' : 'Stat'}</span>
+      <span className="boon-tag">{tag}</span>
 
       {Icon && (
         <div className="boon-icon">
@@ -45,12 +50,12 @@ function BoonCard({ choice, index, onChoose }: { choice: UpgradeOption; index: n
   );
 }
 
-export function UpgradeScreen({ choices, onChoose }: UpgradeScreenProps) {
+export function UpgradeScreen({ choices, label = 'Level Up', title = 'Choose a boon', onChoose }: UpgradeScreenProps) {
   return (
     <div className="overlay">
       <div className="panel upgrade-panel">
-        <p className="eyebrow">Level Up</p>
-        <h2>Choose a boon</h2>
+        <p className="eyebrow">{label}</p>
+        <h2>{title}</h2>
         <div className="upgrade-grid">
           {choices.map((choice, i) => (
             <BoonCard key={choice.id} choice={choice} index={i} onChoose={onChoose} />

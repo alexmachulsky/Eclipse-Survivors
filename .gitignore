@@ -5,3 +5,20 @@ vite.config.js
 vite.config.d.ts
 .playwright-cli/
 output/playwright/
+.worktrees/
+
+# Markdown docs — only README.md is kept in the repo
+*.md
+!README.md
+
+# AI agent / model config files and directories
+.codex
+.claude/
+.github/
+docs/
+
+# Playwright MCP session artifacts
+.playwright-mcp/
+
+# Loose screenshot artifacts
+*.png

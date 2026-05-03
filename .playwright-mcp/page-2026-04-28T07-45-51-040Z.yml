@@ -1,7 +1,0 @@
-- main [ref=e3]:
-  - generic "Eclipse Survivors playfield" [ref=e4]
-  - generic [ref=e6]:
-    - paragraph [ref=e7]: Eclipse Survivors
-    - heading "Hold the ritual line" [level=1] [ref=e8]
-    - paragraph [ref=e9]: Survive the eclipse arena, gather power, and break the final threat.
-    - button "Start Run" [ref=e10] [cursor=pointer]

@@ -11,6 +11,14 @@ npm run dev
 
 Open the local Vite URL shown in the terminal.
 
+## Docker
+
+```bash
+docker compose up -d --build
+```
+
+The app is served at `http://127.0.0.1:5176/`. The host port is fixed in `docker-compose.yml`, so rebuilds keep the same URL.
+
 ## Build
 
 ```bash

@@ -1,0 +1,20 @@
+services:
+  survival:
+    build:
+      context: .
+      target: runtime
+    container_name: survival-roguelike
+    ports:
+      - "5176:80"
+    depends_on:
+      - multiplayer
+    restart: unless-stopped
+
+  multiplayer:
+    build:
+      context: .
+      target: server
+    container_name: survival-multiplayer
+    expose:
+      - "3001"
+    restart: unless-stopped
