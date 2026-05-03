@@ -114,117 +114,132 @@ function shadowBlob(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCont
 function buildPlayer(hit = false): SpriteAsset {
   return createSprite(128, (ctx, unit) => {
     const r = 14 * unit;
+    const teal = hit ? 'rgba(255,255,255,0.9)' : '#5eead4';
 
-    shadowBlob(ctx, r * 1.28, r * 0.38, r * 0.88);
-    radial(ctx, r * 0.3, r * 2.4,
-      hit ? 'rgba(255,255,255,0.38)' : 'rgba(94,234,212,0.46)',
+    // Ground shadow
+    shadowBlob(ctx, r * 1.1, r * 0.3, r * 0.85);
+
+    // Ambient aura
+    radial(ctx, r * 0.2, r * 2.2,
+      hit ? 'rgba(255,255,255,0.28)' : 'rgba(94,234,212,0.36)',
       'rgba(94,234,212,0)');
 
-    // === Swept delta wings ===
-    const wingGrad = ctx.createLinearGradient(-r * 0.95, 0, r * 0.2, 0);
-    wingGrad.addColorStop(0, hit ? '#374151' : '#051525');
-    wingGrad.addColorStop(1, hit ? '#93c5fd' : '#0d4b73');
-    ctx.fillStyle = wingGrad;
-    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.65)' : 'rgba(56,189,248,0.55)';
-    ctx.lineWidth = 1.1 * unit;
+    // === Boots / legs (two dark ovals at the back) ===
+    ctx.fillStyle = hit ? '#4a5568' : '#1a2535';
     for (const s of [-1, 1]) {
+      ctx.save();
+      ctx.rotate(s * 0.22);
       ctx.beginPath();
-      ctx.moveTo(r * 0.18, s * r * 0.4);
-      ctx.lineTo(-r * 0.5, s * r * 1.08);
-      ctx.lineTo(-r * 0.95, s * r * 0.74);
-      ctx.lineTo(-r * 0.58, s * r * 0.33);
-      ctx.closePath();
+      ctx.ellipse(-r * 0.38, s * r * 0.33, 4 * unit, 6 * unit, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
-    }
-    if (!hit) {
-      ctx.strokeStyle = 'rgba(56,189,248,0.3)';
-      ctx.lineWidth = 0.7 * unit;
-      for (const s of [-1, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(r * 0.14, s * r * 0.4);
-        ctx.lineTo(-r * 0.83, s * r * 0.76);
-        ctx.stroke();
-      }
+      ctx.restore();
     }
 
-    // === Engine nacelles ===
-    for (const s of [-1, 1]) {
-      const ex = -r * 0.72;
-      const ey = s * r * 0.46;
-      ctx.fillStyle = hit ? '#b0d4f0' : '#081f33';
-      ctx.strokeStyle = hit ? 'rgba(255,255,255,0.9)' : 'rgba(56,189,248,0.85)';
-      ctx.lineWidth = 0.85 * unit;
-      ctx.beginPath();
-      ctx.ellipse(ex, ey, r * 0.25, r * 0.12, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      if (!hit) {
-        const eg = ctx.createRadialGradient(ex - r * 0.08, ey, 0, ex - r * 0.08, ey, r * 0.32);
-        eg.addColorStop(0, 'rgba(255,255,255,0.97)');
-        eg.addColorStop(0.3, 'rgba(56,189,248,0.82)');
-        eg.addColorStop(0.62, 'rgba(99,102,241,0.34)');
-        eg.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = eg;
-        ctx.beginPath();
-        ctx.arc(ex - r * 0.08, ey, r * 0.32, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // === Main hull ===
-    const hull = ctx.createRadialGradient(-r * 0.17, -r * 0.22, 0, 0, 0, r);
-    hull.addColorStop(0, hit ? '#ffffff' : '#7cf7ff');
-    hull.addColorStop(0.3, hit ? '#dbeafe' : '#0ea5e9');
-    hull.addColorStop(0.7, hit ? '#64748b' : '#072540');
-    hull.addColorStop(1, hit ? '#1e293b' : '#020b14');
-    ctx.fillStyle = hull;
-    ctx.strokeStyle = hit ? '#ffffff' : '#38bdf8';
-    ctx.lineWidth = 1.8 * unit;
+    // === Backpack (small bump behind torso) ===
+    const packGrad = ctx.createRadialGradient(-r * 0.5, 0, 0, -r * 0.5, 0, 5.5 * unit);
+    packGrad.addColorStop(0, hit ? '#374151' : '#2d3d1e');
+    packGrad.addColorStop(1, hit ? '#1f2937' : '#1a2412');
+    ctx.fillStyle = packGrad;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.05, r * 0.7, 0, 0, Math.PI * 2);
+    ctx.ellipse(-r * 0.5, 0, 5.5 * unit, 4 * unit, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Survival vest / torso ===
+    const vestGrad = ctx.createLinearGradient(-r * 0.52, -r * 0.42, r * 0.52, r * 0.42);
+    vestGrad.addColorStop(0, hit ? '#6b7280' : '#3d5a26');
+    vestGrad.addColorStop(0.45, hit ? '#9ca3af' : '#4e722e');
+    vestGrad.addColorStop(1, hit ? '#6b7280' : '#3d5a26');
+    ctx.fillStyle = vestGrad;
+    ctx.strokeStyle = teal;
+    ctx.lineWidth = 1.6 * unit;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.54, r * 0.42, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    if (!hit) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = 0.7 * unit;
-      for (const s of [-1, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(-r * 0.75, s * r * 0.22);
-        ctx.quadraticCurveTo(r * 0.08, s * r * 0.34, r * 0.8, 0);
-        ctx.stroke();
-      }
-    }
 
-    // === Nose cone ===
-    const prowGrad = ctx.createLinearGradient(r * 0.28, 0, r * 1.87, 0);
-    prowGrad.addColorStop(0, '#f59e0b');
-    prowGrad.addColorStop(0.55, '#fde68a');
-    prowGrad.addColorStop(1, '#fff3b0');
-    ctx.fillStyle = hit ? '#ffffff' : prowGrad;
-    ctx.strokeStyle = 'rgba(255,243,176,0.8)';
-    ctx.lineWidth = 1.05 * unit;
+    // Vest chest strap detail
+    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.2)' : 'rgba(94,234,212,0.28)';
+    ctx.lineWidth = 0.9 * unit;
     ctx.beginPath();
-    ctx.moveTo(r * 1.87, 0);
-    ctx.lineTo(r * 0.26, -r * 0.5);
-    ctx.lineTo(r * 0.55, 0);
-    ctx.lineTo(r * 0.26, r * 0.5);
+    ctx.moveTo(-r * 0.08, -r * 0.26);
+    ctx.lineTo(r * 0.3, 0);
+    ctx.lineTo(-r * 0.08, r * 0.26);
+    ctx.stroke();
+
+    // === Weapon arm (skin, extends forward-right) ===
+    ctx.fillStyle = hit ? '#e2b48a' : '#b87044';
+    ctx.beginPath();
+    ctx.ellipse(r * 0.46, r * 0.2, 4 * unit, 3 * unit, -0.45, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Gun barrel (pointing right = forward) ===
+    ctx.fillStyle = hit ? '#9ca3af' : '#202020';
+    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.45)' : '#4a4a4a';
+    ctx.lineWidth = 0.8 * unit;
+    // receiver / body
+    ctx.beginPath();
+    ctx.rect(r * 0.42, -2 * unit, r * 0.78, 4 * unit);
+    ctx.fill();
+    ctx.stroke();
+    // grip
+    ctx.beginPath();
+    ctx.rect(r * 0.48, 2 * unit, r * 0.13, 4.5 * unit);
+    ctx.fill();
+
+    // Muzzle flash glow
+    const muzzle = ctx.createRadialGradient(r * 1.2, 0, 0, r * 1.2, 0, 5 * unit);
+    muzzle.addColorStop(0, hit ? 'rgba(255,255,255,0.95)' : 'rgba(255,215,70,0.95)');
+    muzzle.addColorStop(0.5, hit ? 'rgba(255,255,255,0.3)' : 'rgba(255,160,30,0.35)');
+    muzzle.addColorStop(1, 'rgba(255,160,30,0)');
+    ctx.fillStyle = muzzle;
+    ctx.beginPath();
+    ctx.arc(r * 1.2, 0, 5 * unit, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Head ===
+    const headX = r * 0.28;
+    const headR = r * 0.37;
+    const headFill = ctx.createRadialGradient(headX - headR * 0.3, -headR * 0.2, 0, headX, 0, headR);
+    headFill.addColorStop(0, hit ? '#ffffff' : '#dea86c');
+    headFill.addColorStop(1, hit ? '#cbd5e1' : '#b06838');
+    ctx.fillStyle = headFill;
+    ctx.strokeStyle = teal;
+    ctx.lineWidth = 1.5 * unit;
+    ctx.beginPath();
+    ctx.arc(headX, 0, headR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Tactical helmet (back-half arc)
+    const helmetGrad = ctx.createLinearGradient(headX - headR, 0, headX + headR * 0.2, 0);
+    helmetGrad.addColorStop(0, hit ? '#374151' : '#1c2e12');
+    helmetGrad.addColorStop(1, hit ? '#4b5563' : '#2d4820');
+    ctx.fillStyle = helmetGrad;
+    ctx.strokeStyle = hit ? '#6b7280' : '#3a5828';
+    ctx.lineWidth = 0.9 * unit;
+    ctx.beginPath();
+    ctx.arc(headX, 0, headR, Math.PI * 0.55, Math.PI * 1.72);
+    ctx.lineTo(headX, 0);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // === Cockpit ===
-    const cpg = ctx.createRadialGradient(r * 0.15, -r * 0.1, 0, r * 0.15, 0, r * 0.27);
-    cpg.addColorStop(0, hit ? '#ffffff' : '#ddf7ff');
-    cpg.addColorStop(0.5, hit ? '#bae6fd' : '#0284c7');
-    cpg.addColorStop(1, hit ? '#1d4ed8' : '#011828');
-    ctx.fillStyle = cpg;
+    // Helmet brim stripe
+    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.25)' : 'rgba(94,234,212,0.3)';
+    ctx.lineWidth = 0.8 * unit;
     ctx.beginPath();
-    ctx.ellipse(r * 0.15, 0, r * 0.27, r * 0.18, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.arc(headX, 0, headR + 1.2 * unit, Math.PI * 0.6, Math.PI * 1.65);
+    ctx.stroke();
+
+    // Eye / visor glow
+    const eyeX = headX + headR * 0.58;
+    const eyeGrad = ctx.createRadialGradient(eyeX, r * 0.07, 0, eyeX, r * 0.07, 3.5 * unit);
+    eyeGrad.addColorStop(0, hit ? '#ffffff' : '#ffe070');
+    eyeGrad.addColorStop(0.6, hit ? 'rgba(255,255,255,0.4)' : 'rgba(255,224,112,0.4)');
+    eyeGrad.addColorStop(1, 'rgba(255,224,112,0)');
+    ctx.fillStyle = eyeGrad;
     ctx.beginPath();
-    ctx.ellipse(r * 0.08, -r * 0.06, r * 0.1, r * 0.065, -0.35, 0, Math.PI * 2);
+    ctx.arc(eyeX, r * 0.07, 3.5 * unit, 0, Math.PI * 2);
     ctx.fill();
   });
 }

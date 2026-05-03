@@ -455,6 +455,11 @@ h2 {
   margin-top: 28px;
 }
 
+.menu-panel .button-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 .primary-button,
 .secondary-button {
   min-height: 46px;
