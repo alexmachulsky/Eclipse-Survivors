@@ -971,6 +971,15 @@ h2 {
   align-items: center;
 }
 
+.hud-bars .tooltip-wrap {
+  width: 100%;
+}
+
+.hud-bars .tooltip-wrap > *:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 .tooltip-panel {
   display: none;
   position: absolute;
