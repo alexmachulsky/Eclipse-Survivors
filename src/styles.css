@@ -801,8 +801,8 @@ h2 {
   animation: drift-b 24s ease-in-out infinite alternate;
 }
 
-.menu-backdrop::before,
-.menu-backdrop::after {
+.overlay--menu::before,
+.overlay--menu::after {
   content: '';
   position: absolute;
   width: 2px;
@@ -813,14 +813,14 @@ h2 {
   pointer-events: none;
 }
 
-.menu-backdrop::after {
+.overlay--menu::after {
   animation-delay: 4s;
   top: 20%;
   left: 75%;
   transform: rotate(-35deg);
 }
 
-.menu-backdrop::before {
+.overlay--menu::before {
   top: 10%;
   left: 55%;
   transform: rotate(-35deg);

@@ -198,10 +198,18 @@ export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps
     stats.level > history.best.level
   );
 
-  const weaponPath = snapshot.upgradeHistory
-    .filter(t => ['Magic Bolt', 'Astral Orbit', 'Area Pulse', 'Piercing Arrow',
-                   'Starfall Lance', 'Gravitic Halo', 'Supernova Bloom', 'Comet Volley']
-              .some(w => t.includes(w)));
+  const WEAPON_NAMES = [
+    'Magic Bolt', 'Astral Orbit', 'Area Pulse', 'Piercing Arrow',
+    'Starfall Lance', 'Gravitic Halo', 'Supernova Bloom', 'Comet Volley',
+  ];
+
+  // Filter and extract weapon names
+  const weaponPath = (snapshot.upgradeHistory ?? [])
+    .map(title => WEAPON_NAMES.find(name => title.includes(name)))
+    .filter((name): name is string => name !== undefined);
+
+  // Deduplicate consecutive same names (same weapon upgraded multiple times)
+  const dedupedPath = weaponPath.filter((name, i) => i === 0 || name !== weaponPath[i - 1]);
 
   const panelClassname = `panel end-panel ${victory ? 'end-panel--victory' : 'end-panel--defeat'}`;
   const headerText = victory ? 'The eclipse breaks' : 'THE ECLIPSE CLAIMS YOU';
@@ -219,9 +227,9 @@ export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps
           <StatCell label="Upgrades" value={stats.upgradesCollected} />
           <StatCell label="Damage" value={Math.round(stats.damageDealt)} />
         </dl>
-        {weaponPath.length > 0 && (
+        {dedupedPath.length > 0 && (
           <div className="weapon-path">
-            {weaponPath.slice(0, 6).join(' → ')}
+            {dedupedPath.slice(0, 6).join(' → ')}
           </div>
         )}
         <button className="primary-button" type="button" onClick={onRestart}>
