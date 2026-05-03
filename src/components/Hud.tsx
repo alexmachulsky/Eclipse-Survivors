@@ -64,8 +64,9 @@ export function Hud({ snapshot, onPause }: HudProps) {
           {snapshot.enemyCurseStacks > 0 && (
             <span
               className="curse-alert"
+              aria-label={`Curse stacks: ${snapshot.enemyCurseStacks}`}
               style={{
-                textShadow: `0 0 ${4 + snapshot.enemyCurseStacks * 3}px rgba(255,51,95,${0.4 + snapshot.enemyCurseStacks * 0.12})`,
+                textShadow: `0 0 ${4 + snapshot.enemyCurseStacks * 3}px rgba(255,51,95,${Math.min(0.4 + snapshot.enemyCurseStacks * 0.12, 0.9)})`, // --c-danger
                 letterSpacing: '2px'
               }}
             >
@@ -114,11 +115,13 @@ export function Hud({ snapshot, onPause }: HudProps) {
           )}
         </div>
 
-        <div className="hud-weapons-row">
-          {snapshot.weapons.map((weapon, idx) => (
-            <WeaponTile key={weapon.id} weapon={weapon} isActive={idx === 0} />
-          ))}
-        </div>
+        {snapshot.weapons.length > 0 && (
+          <div className="hud-weapons-row">
+            {snapshot.weapons.map((weapon, idx) => (
+              <WeaponTile key={weapon.id} weapon={weapon} isActive={idx === 0} />
+            ))}
+          </div>
+        )}
 
         <button className="icon-button" type="button" aria-label="Pause" onClick={onPause}>
           &#x23F8;
