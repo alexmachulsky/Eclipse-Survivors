@@ -22,6 +22,8 @@ services:
       context: .
       target: server
     container_name: survival-multiplayer
+    environment:
+      ALLOWED_ORIGINS: "http://localhost:5176,http://127.0.0.1:5176"
     expose:
       - "3001"
     restart: unless-stopped

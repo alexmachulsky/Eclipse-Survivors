@@ -25,6 +25,17 @@ function openSocket(url: string, origin = 'http://127.0.0.1'): Promise<WebSocket
   });
 }
 
+function expectRejectedSocket(url: string, headers: Record<string, string>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { headers });
+    socket.once('open', () => {
+      socket.close();
+      reject(new Error('Expected websocket upgrade to be rejected'));
+    });
+    socket.once('error', () => resolve());
+  });
+}
+
 function waitForClose(socket: WebSocket): Promise<number> {
   return new Promise((resolve) => {
     socket.once('close', (code) => resolve(code));
@@ -62,12 +73,23 @@ afterEach(async () => {
 describe('LAN server security', () => {
   it('rejects browser websocket upgrades from unexpected origins', async () => {
     const { url } = await listen();
-    const socket = new WebSocket(url, { headers: { Origin: 'http://evil.test' } });
 
-    await expect(new Promise((resolve, reject) => {
-      socket.once('open', resolve);
-      socket.once('error', reject);
-    })).rejects.toThrow();
+    await expect(expectRejectedSocket(url, { Origin: 'http://evil.test' })).resolves.toBeUndefined();
+  });
+
+  it('does not trust a reflected Host as an allowed websocket origin', async () => {
+    const handle = createLanServer({ allowedOrigins: [] });
+    handles.push(handle);
+    await handle.listen(0, '127.0.0.1');
+    const address = handle.server.address();
+
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected TCP server address');
+    }
+
+    const url = `ws://127.0.0.1:${address.port}/ws`;
+
+    await expect(expectRejectedSocket(url, { Origin: 'http://attacker.test', Host: 'attacker.test' })).resolves.toBeUndefined();
   });
 
   it('closes malformed JSON values without crashing the room', async () => {

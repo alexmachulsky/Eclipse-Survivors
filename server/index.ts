@@ -65,12 +65,66 @@ function sanitizeName(name: unknown, fallback: string): string {
 function parseAllowedOrigins(value: string | undefined): string[] {
   return (value ?? '')
     .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+    .map((origin) => normalizeOrigin(origin.trim()))
+    .filter((origin): origin is string => Boolean(origin));
 }
 
-function isAllowedOrigin(originHeader: string | undefined, hostHeader: string | undefined, allowedOrigins: string[]): boolean {
-  if (!originHeader || !hostHeader) {
+function normalizeOrigin(value: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split('.');
+
+  if (parts.length !== 4) {
+    return false;
+  }
+
+  const octets = parts.map((part) => Number(part));
+
+  if (!octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+    return false;
+  }
+
+  const [first, second] = octets;
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 169 && second === 254)
+  );
+}
+
+function isLocalNetworkHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+  if (normalized === 'localhost' || isPrivateIpv4(normalized)) {
+    return true;
+  }
+
+  if (!normalized.includes(':')) {
+    return false;
+  }
+
+  return (
+    normalized === '::1' ||
+    normalized.startsWith('fc') ||
+    normalized.startsWith('fd') ||
+    normalized.startsWith('fe80:')
+  );
+}
+
+export function isAllowedOrigin(originHeader: string | undefined, allowedOrigins: string[]): boolean {
+  if (!originHeader) {
     return false;
   }
 
@@ -81,11 +135,11 @@ function isAllowedOrigin(originHeader: string | undefined, hostHeader: string | 
     return false;
   }
 
-  const allowed = new Set(allowedOrigins);
-  allowed.add(`http://${hostHeader}`);
-  allowed.add(`https://${hostHeader}`);
+  if (allowedOrigins.includes(origin.origin)) {
+    return true;
+  }
 
-  return allowed.has(origin.origin);
+  return (origin.protocol === 'http:' || origin.protocol === 'https:') && isLocalNetworkHostname(origin.hostname);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -389,7 +443,7 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
 
-    if (url.pathname !== '/ws' || !isAllowedOrigin(request.headers.origin, request.headers.host, allowedOrigins)) {
+    if (url.pathname !== '/ws' || !isAllowedOrigin(request.headers.origin, allowedOrigins)) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
