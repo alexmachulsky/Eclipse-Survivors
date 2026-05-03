@@ -786,7 +786,7 @@ export class GameEngine {
         if (enemy.type === 'boss') {
           // Shockwave: add a telegraph ring
           this.state.telegraphs.push({
-            id: `shockwave-${Date.now()}`,
+            id: `shockwave-${this.state.elapsed}`,
             position: { ...enemy.position },
             angle: 0,
             width: 0,
@@ -801,7 +801,7 @@ export class GameEngine {
             const angle = (i / 30) * Math.PI * 2;
             if (this.state.particles.length < MAX_PARTICLES) {
               this.state.particles.push({
-                id: `bd-${i}-${Date.now()}`,
+                id: `bd-${i}-${this.state.elapsed}`,
                 position: { ...enemy.position },
                 velocity: { x: Math.cos(angle) * (80 + Math.random() * 120), y: Math.sin(angle) * (80 + Math.random() * 120) },
                 radius: 3 + Math.random() * 4,
@@ -817,7 +817,7 @@ export class GameEngine {
             const angle = (i / 8) * Math.PI * 2;
             if (this.state.particles.length < MAX_PARTICLES) {
               this.state.particles.push({
-                id: `td-${i}-${Date.now()}`,
+                id: `td-${i}-${this.state.elapsed}`,
                 position: { ...enemy.position },
                 velocity: { x: Math.cos(angle) * (40 + Math.random() * 60), y: Math.sin(angle) * (40 + Math.random() * 60) },
                 radius: 5 + Math.random() * 3,
@@ -1067,7 +1067,7 @@ export class GameEngine {
     for (let f = 0; f < Math.min(slots, 3); f++) {
       const angle = Math.random() * Math.PI * 2;
       this.state.particles.push({
-        id: `mf-${weapon.id}-${f}-${Date.now()}`,
+        id: `mf-${weapon.id}-${f}-${this.state.elapsed}`,
         position: { ...this.state.player.position },
         velocity: { x: Math.cos(angle) * 60, y: Math.sin(angle) * 60 },
         radius: 2,
@@ -2049,8 +2049,8 @@ export class GameEngine {
       ctx.fillRect(0, 0, this.viewSize.width, barHeight);
       ctx.fillRect(0, this.viewSize.height - barHeight, this.viewSize.width, barHeight);
 
-      // Fade in over the first 0.2s (timer from 2.5 to 2.3)
-      const fadeProgress = (2.5 - timer) / 0.2;
+      // Fade in over the full 0.6s pause (timer from 2.5 to 1.9)
+      const fadeProgress = (2.5 - timer) / 0.6;
       const alpha = Math.min(1, Math.max(0, fadeProgress));
 
       // Draw centered red glowing text "NIGHT LICH AWAKENS" in large font
