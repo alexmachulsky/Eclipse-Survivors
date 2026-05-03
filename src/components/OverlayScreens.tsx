@@ -133,8 +133,8 @@ export function PauseMenu({ weapons, onResume, onRestart }: PauseProps) {
             <div className="pause-loadout">
               <p className="pause-loadout-label">Current loadout</p>
               <div className="pause-weapons">
-                {weapons.map((w) => (
-                  <WeaponTile key={w.id} weapon={w} />
+                {weapons.map((w, idx) => (
+                  <WeaponTile key={w.id} weapon={w} isActive={idx === 0} />
                 ))}
               </div>
             </div>

@@ -164,6 +164,24 @@ button {
   background: linear-gradient(90deg, var(--c-danger), var(--c-rare));
 }
 
+.hp-fill--healthy {
+  background: linear-gradient(90deg, #ff335f, #ffd166) !important;
+}
+
+.hp-fill--mid {
+  background: linear-gradient(90deg, #ff6b35, #ffd166) !important;
+}
+
+.hp-fill--critical {
+  background: linear-gradient(90deg, #ff335f, #ff6b35) !important;
+  animation: hp-critical-pulse 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes hp-critical-pulse {
+  from { opacity: 0.75; }
+  to { opacity: 1; box-shadow: 0 0 8px rgba(255, 51, 95, 0.6); }
+}
+
 .xp-meter span {
   background: linear-gradient(90deg, var(--c-common), var(--c-arcane));
 }
@@ -209,6 +227,11 @@ button {
   box-shadow: 0 0 12px rgb(255 209 102 / 15%);
 }
 
+.weapon-tile--active {
+  border-color: var(--c-rare) !important;
+  box-shadow: 0 0 8px rgba(255, 209, 102, 0.25) !important;
+}
+
 .pip-row {
   display: flex;
   gap: 3px;
@@ -237,6 +260,32 @@ button {
   animation: boss-pulse 1s ease-in-out infinite alternate;
 }
 
+.boss-countdown-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(255, 209, 102, 0.15);
+  color: var(--c-rare);
+  border: 1px solid rgba(255, 209, 102, 0.4);
+  animation: boss-countdown-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.boss-countdown-badge--urgent {
+  background: rgba(255, 51, 95, 0.15);
+  color: var(--c-danger);
+  border-color: rgba(255, 51, 95, 0.5);
+  animation: boss-countdown-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes boss-countdown-pulse {
+  from { opacity: 0.8; }
+  to { opacity: 1; filter: brightness(1.2); }
+}
+
 .objective-alert,
 .curse-alert {
   box-shadow: inset 0 0 0 1px rgb(94 234 212 / 35%);
@@ -257,6 +306,41 @@ button {
 @keyframes boss-pulse {
   from { opacity: 1; }
   to   { opacity: 0.5; }
+}
+
+.streak-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  animation: streak-enter 0.2s ease-out;
+}
+
+.streak-badge--bronze {
+  color: var(--c-rare);
+  background: rgba(255, 209, 102, 0.12);
+}
+
+.streak-badge--silver {
+  color: #ff5edb;
+  background: rgba(255, 94, 219, 0.12);
+}
+
+.streak-badge--gold {
+  color: var(--c-danger);
+  background: rgba(255, 51, 95, 0.12);
+  animation: streak-pulse 0.4s ease-in-out infinite alternate;
+}
+
+@keyframes streak-enter {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes streak-pulse {
+  from { opacity: 0.8; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.05); }
 }
 
 .icon-button {

@@ -15,10 +15,10 @@ function formatTime(totalSeconds: number): string {
 
 const PIP_COUNT = 8;
 
-export function WeaponTile({ weapon }: { weapon: Weapon }) {
+export function WeaponTile({ weapon, isActive }: { weapon: Weapon; isActive: boolean }) {
   const Icon = WeaponIconMap[weapon.id];
   return (
-    <div className={`weapon-tile${weapon.level > 1 ? ' weapon-tile--upgraded' : ''}`}>
+    <div className={`weapon-tile${weapon.level > 1 ? ' weapon-tile--upgraded' : ''}${isActive ? ' weapon-tile--active' : ''}`}>
       <Icon size={22} color={weapon.level > 1 ? 'var(--c-rare)' : 'var(--c-common)'} />
       <div className="pip-row">
         {Array.from({ length: PIP_COUNT }, (_, i) => (
@@ -34,6 +34,12 @@ export function Hud({ snapshot, onPause }: HudProps) {
   const xpRatio = Math.max(0, Math.min(1, snapshot.xp / snapshot.xpToNext));
   const objective = snapshot.activeObjective;
   const objectiveRatio = objective ? Math.max(0, Math.min(1, objective.captureProgress / objective.requiredCapture)) : 0;
+
+  const getHealthBarClass = () => {
+    if (healthRatio > 0.5) return 'hp-fill--healthy';
+    if (healthRatio > 0.25) return 'hp-fill--mid';
+    return 'hp-fill--critical';
+  };
 
   return (
     <>
@@ -55,8 +61,29 @@ export function Hud({ snapshot, onPause }: HudProps) {
               Rift {Math.round(objectiveRatio * 100)}%
             </span>
           )}
-          {snapshot.enemyCurseStacks > 0 && <span className="curse-alert">Curse {snapshot.enemyCurseStacks}</span>}
-          {snapshot.bossSpawned && <span className="boss-alert">Boss</span>}
+          {snapshot.enemyCurseStacks > 0 && (
+            <span
+              className="curse-alert"
+              style={{
+                textShadow: `0 0 ${4 + snapshot.enemyCurseStacks * 3}px rgba(255,51,95,${0.4 + snapshot.enemyCurseStacks * 0.12})`,
+                letterSpacing: '2px'
+              }}
+            >
+              {'☠'.repeat(Math.min(snapshot.enemyCurseStacks, 5))}{snapshot.enemyCurseStacks > 5 && '+'}
+            </span>
+          )}
+          {snapshot.bossApproachingIn !== null && !snapshot.bossSpawned ? (
+            <span className={`boss-countdown-badge${snapshot.bossApproachingIn <= 10 ? ' boss-countdown-badge--urgent' : ''}`}>
+              ⚠ BOSS IN {Math.ceil(snapshot.bossApproachingIn)}s
+            </span>
+          ) : snapshot.bossSpawned ? (
+            <span className="boss-alert">Boss</span>
+          ) : null}
+          {snapshot.killStreak >= 3 && (
+            <div className={`streak-badge streak-badge--${snapshot.killStreak >= 10 ? 'gold' : snapshot.killStreak >= 5 ? 'silver' : 'bronze'}`}>
+              ×{snapshot.killStreak} 🔥
+            </div>
+          )}
         </div>
       </div>
 
@@ -65,7 +92,7 @@ export function Hud({ snapshot, onPause }: HudProps) {
           <div className="hud-bar-row">
             <HeartIcon size={13} color="var(--c-danger)" />
             <div className="meter health-meter" aria-label="Health">
-              <span style={{ width: `${healthRatio * 100}%` }} />
+              <span className={getHealthBarClass()} style={{ width: `${healthRatio * 100}%` }} />
               <strong>{Math.ceil(snapshot.health)}</strong>
             </div>
           </div>
@@ -88,8 +115,8 @@ export function Hud({ snapshot, onPause }: HudProps) {
         </div>
 
         <div className="hud-weapons-row">
-          {snapshot.weapons.map((weapon) => (
-            <WeaponTile key={weapon.id} weapon={weapon} />
+          {snapshot.weapons.map((weapon, idx) => (
+            <WeaponTile key={weapon.id} weapon={weapon} isActive={idx === 0} />
           ))}
         </div>
 
