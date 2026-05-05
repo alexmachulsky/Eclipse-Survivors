@@ -1,5 +1,6 @@
 import type { Enemy, Player, Projectile, Weapon } from './types';
-import { angleTo, vectorFromAngle } from './collisions';
+import { vectorFromAngle } from './collisions';
+import { WEAPONS } from './content/weapons.registry';
 
 let projectileSequence = 0;
 
@@ -31,61 +32,9 @@ export function findNearestEnemy(enemies: Enemy[], position: { x: number; y: num
 }
 
 export function fireWeaponAtTarget(weapon: Weapon, player: Player, target: Enemy): Projectile[] {
-  const angle = angleTo(player.position, target.position);
-  const levelBonus = Math.max(0, weapon.level - 1);
-  const damage = Math.round(weapon.damage * player.damageMultiplier * (1 + levelBonus * 0.3));
-  const projectileSpeed = player.projectileSpeedMultiplier;
-
-  if (weapon.id === 'piercing-arrow') {
-    const projectileCount = weapon.evolved ? 3 : 1;
-
-    return Array.from({ length: projectileCount }, (_, index) => {
-      const spread = projectileCount === 1 ? 0 : (index - 1) * 0.18;
-      const direction = vectorFromAngle(angle + spread, (weapon.evolved ? 660 : 660) * projectileSpeed);
-
-      return {
-        id: nextProjectileId('arrow'),
-        owner: 'player',
-        weaponId: weapon.id,
-        kind: 'arrow',
-        position: { ...player.position },
-        velocity: direction,
-        radius: 5,
-        damage: weapon.evolved ? Math.round(damage * 1.2) : damage,
-        life: 1.25,
-        maxLife: 1.25,
-        pierce: weapon.evolved ? 10 : 2 + weapon.level,
-        color: '#b8ff6a',
-        hitIds: new Set<string>()
-      };
-    });
-  }
-
-  if (weapon.id === 'magic-bolt') {
-    const projectileCount = weapon.evolved ? 3 : weapon.level >= 4 ? 2 : 1;
-
-    return Array.from({ length: projectileCount }, (_, index) => {
-      const spread = projectileCount === 1 ? 0 : (index - (projectileCount - 1) / 2) * 0.16;
-
-      return {
-        id: nextProjectileId('bolt'),
-        owner: 'player',
-        weaponId: weapon.id,
-        kind: 'bolt',
-        position: { ...player.position },
-        velocity: vectorFromAngle(angle + spread, (weapon.evolved ? 640 : 520) * projectileSpeed),
-        radius: 6,
-        damage: weapon.evolved ? Math.round(damage * 1.1) : damage,
-        life: 1.4,
-        maxLife: 1.4,
-        pierce: weapon.evolved ? 4 : weapon.level >= 5 ? 2 : 1,
-        color: weapon.evolved ? '#d8f6ff' : '#6ee7ff',
-        hitIds: new Set<string>()
-      };
-    });
-  }
-
-  return [];
+  const def = WEAPONS[weapon.id];
+  if (!def) return [];
+  return def.fire({ weapon, player, target, rng: Math.random });
 }
 
 export function createAreaPulse(weapon: Weapon, player: Player): Projectile {

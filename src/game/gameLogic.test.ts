@@ -854,6 +854,55 @@ describe('core game logic', () => {
 
 import { WEAPONS } from './content/weapons.registry';
 
+function makeRegistryTestEnemy(): Enemy {
+  return {
+    id: 'enemy-test',
+    type: 'basic',
+    rank: 'normal',
+    position: { x: 200, y: 0 },
+    velocity: { x: 0, y: 0 },
+    radius: 17,
+    maxHealth: 22,
+    health: 22,
+    speed: 68,
+    damage: 6,
+    xpValue: 2,
+    color: '#7cf7ff',
+    cooldown: 0,
+    hitFlash: 0,
+  };
+}
+
+describe('weapons registry fire() round-trip', () => {
+  it('magic-bolt registry fire matches fireWeaponAtTarget for level 1', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapon = createStartingWeapons().find((w) => w.id === 'magic-bolt')!;
+    const enemy = makeRegistryTestEnemy();
+    const fromLegacy = fireWeaponAtTarget(weapon, player, enemy);
+    const fromRegistry = WEAPONS['magic-bolt'].fire({ weapon, player, target: enemy, rng: Math.random });
+    expect(fromRegistry).toHaveLength(fromLegacy.length);
+    for (let i = 0; i < fromLegacy.length; i += 1) {
+      expect(fromRegistry[i].damage).toBe(fromLegacy[i].damage);
+      expect(fromRegistry[i].pierce).toBe(fromLegacy[i].pierce);
+      expect(fromRegistry[i].kind).toBe(fromLegacy[i].kind);
+      expect(fromRegistry[i].color).toBe(fromLegacy[i].color);
+    }
+  });
+
+  it('piercing-arrow registry fire matches fireWeaponAtTarget for evolved variant', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapon = { ...createStartingWeapons().find((w) => w.id === 'piercing-arrow')!, level: 3, evolved: true };
+    const enemy = makeRegistryTestEnemy();
+    const fromLegacy = fireWeaponAtTarget(weapon, player, enemy);
+    const fromRegistry = WEAPONS['piercing-arrow'].fire({ weapon, player, target: enemy, rng: Math.random });
+    expect(fromRegistry).toHaveLength(fromLegacy.length);
+    for (let i = 0; i < fromLegacy.length; i += 1) {
+      expect(fromRegistry[i].damage).toBe(fromLegacy[i].damage);
+      expect(fromRegistry[i].pierce).toBe(fromLegacy[i].pierce);
+    }
+  });
+});
+
 describe('weapons registry', () => {
   it('has an entry for every WeaponId used by createStartingWeapons', () => {
     const startingIds = createStartingWeapons().map((w) => w.id);
