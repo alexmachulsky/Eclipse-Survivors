@@ -851,3 +851,24 @@ describe('core game logic', () => {
     expect(engine.state.healthPickups[0].position.x).toBeLessThan(startX);
   });
 });
+
+import { WEAPONS } from './content/weapons.registry';
+
+describe('weapons registry', () => {
+  it('has an entry for every WeaponId used by createStartingWeapons', () => {
+    const startingIds = createStartingWeapons().map((w) => w.id);
+    for (const id of startingIds) {
+      expect(WEAPONS[id]).toBeDefined();
+      expect(WEAPONS[id].id).toBe(id);
+    }
+  });
+
+  it('exposes baseFireRate, baseDamage, baseRange that match createStartingWeapons defaults', () => {
+    for (const w of createStartingWeapons()) {
+      const def = WEAPONS[w.id];
+      expect(def.baseFireRate).toBe(w.fireRate);
+      expect(def.baseDamage).toBe(w.damage);
+      expect(def.baseRange).toBe(w.range);
+    }
+  });
+});
