@@ -70,6 +70,7 @@ export interface Projectile {
   id: string;
   owner: ProjectileOwner;
   ownerPlayerId?: string;
+  weaponId?: WeaponId;  // weapon that created this projectile (for damage tracking)
   kind: ProjectileKind;
   position: Vector;
   velocity: Vector;
@@ -84,9 +85,11 @@ export interface Projectile {
   hitIds?: Set<string>;
 }
 
-export type WeaponId = 'magic-bolt' | 'orbit' | 'area-pulse' | 'piercing-arrow';
-export type PassiveId = 'cooldown-sigil' | 'astral-lens' | 'void-core' | 'keen-fletching';
-export type EvolutionId = 'starfall-lance' | 'gravitic-halo' | 'supernova-bloom' | 'comet-volley';
+// String aliases — actual valid values live in src/game/content/*.registry.ts.
+// Kept as named aliases so existing call sites read clearly without churn.
+export type WeaponId = string;
+export type PassiveId = string;
+export type EvolutionId = string;
 
 export interface Weapon {
   id: WeaponId;
@@ -113,6 +116,9 @@ export interface UpgradeOption {
   weaponId?: WeaponId;
   passiveId?: PassiveId;
   evolutionId?: EvolutionId;
+  currentWeaponLevel?: number;   // populated for weapon upgrades so UI can show "lv.2 → 3"
+  statDelta?: string;            // human-readable delta e.g. "+22% ATK" for stat/passive upgrades
+  rarity?: 'common' | 'rare' | 'epic';
 }
 
 export interface DamageText {
@@ -123,6 +129,7 @@ export interface DamageText {
   life: number;
   maxLife: number;
   color: string;
+  text?: string;  // optional for streak/custom text display
 }
 
 export interface XPGem {
@@ -194,6 +201,14 @@ export interface RunDirectorState {
   bossSpawned: boolean;
 }
 
+export interface UpgradeAgency {
+  rerolls: number;
+  banishes: number;
+  locks: number;
+  maxRerolls: number;
+  maxLocks: number;
+}
+
 export type GamePhase = 'menu' | 'playing' | 'paused' | 'levelUp' | 'chestReward' | 'gameOver' | 'victory';
 export type PlayerStatus = 'active' | 'choosing' | 'downed' | 'disconnected';
 
@@ -233,6 +248,16 @@ export interface GameState {
   stats: GameStats;
   orbitAngle: number;
   screenShake: number;
+  killStreak: number;            // current consecutive kill count
+  killStreakExpiry: number;      // elapsed time when streak resets (streak resets after 3s)
+  weaponDamageDealt: Record<string, number>;  // weapon id → total damage dealt this run
+  upgradeHistory: string[];      // ordered list of upgrade titles collected
+  cinematicState: null | { type: 'boss-spawn'; timer: number };
+  timeScale: number;             // 1.0 normally; set to 0.35 briefly on level-up for time-slow feel
+  agency: UpgradeAgency;         // remaining reroll/banish/lock for the current level-up screen
+  bannedUpgradeIds: string[];    // banished upgrade ids — persist for the whole run
+  lockedSlot: number | null;     // index of the card locked across rerolls (null = none)
+  lastRunReward: number;         // shards earned on the most recent game-end transition (0 until run ends)
 }
 
 export interface PlayerRuntime {

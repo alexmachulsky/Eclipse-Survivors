@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { circlesOverlap, circlesOverlapSq, normalizeVector } from './collisions';
 import { SpatialGrid } from './spatialGrid';
 import { updatePlayerMovement } from './player';
@@ -15,7 +15,7 @@ import { createStartingPlayer, createStartingWeapons } from './state';
 import { createAreaPulse, findNearestEnemy, fireWeaponAtTarget } from './weapons';
 import { resolveProjectileEnemyHit } from './projectiles';
 import { collectRunDirectorEvents, createRunDirectorState, getActLabel, getBossPhase, updateObjectiveProgress } from './runDirector';
-import type { Enemy, ObjectiveState, Projectile, Viewport, Weapon } from './types';
+import type { Enemy, ObjectiveState, Projectile, UpgradeOption, Viewport, Weapon } from './types';
 import { GameEngine } from './GameEngine';
 import { GameSim, findNearestActivePlayer } from './GameSim';
 import { beginFrame, beginRender, beginUpdate, endFrame, endRender, endUpdate, resetPerfForTests, summary } from './perf';
@@ -849,5 +849,283 @@ describe('core game logic', () => {
     engine.updateHealthPickups(1 / 60);
 
     expect(engine.state.healthPickups[0].position.x).toBeLessThan(startX);
+  });
+});
+
+import { WEAPONS } from './content/weapons.registry';
+
+function makeRegistryTestEnemy(): Enemy {
+  return {
+    id: 'enemy-test',
+    type: 'basic',
+    rank: 'normal',
+    position: { x: 200, y: 0 },
+    velocity: { x: 0, y: 0 },
+    radius: 17,
+    maxHealth: 22,
+    health: 22,
+    speed: 68,
+    damage: 6,
+    xpValue: 2,
+    color: '#7cf7ff',
+    cooldown: 0,
+    hitFlash: 0,
+  };
+}
+
+describe('weapons registry fire() round-trip', () => {
+  it('magic-bolt registry fire matches fireWeaponAtTarget for level 1', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapon = createStartingWeapons().find((w) => w.id === 'magic-bolt')!;
+    const enemy = makeRegistryTestEnemy();
+    const fromLegacy = fireWeaponAtTarget(weapon, player, enemy);
+    const fromRegistry = WEAPONS['magic-bolt'].fire({ weapon, player, target: enemy, rng: Math.random });
+    expect(fromRegistry).toHaveLength(fromLegacy.length);
+    for (let i = 0; i < fromLegacy.length; i += 1) {
+      expect(fromRegistry[i].damage).toBe(fromLegacy[i].damage);
+      expect(fromRegistry[i].pierce).toBe(fromLegacy[i].pierce);
+      expect(fromRegistry[i].kind).toBe(fromLegacy[i].kind);
+      expect(fromRegistry[i].color).toBe(fromLegacy[i].color);
+    }
+  });
+
+  it('piercing-arrow registry fire matches fireWeaponAtTarget for evolved variant', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapon = { ...createStartingWeapons().find((w) => w.id === 'piercing-arrow')!, level: 3, evolved: true };
+    const enemy = makeRegistryTestEnemy();
+    const fromLegacy = fireWeaponAtTarget(weapon, player, enemy);
+    const fromRegistry = WEAPONS['piercing-arrow'].fire({ weapon, player, target: enemy, rng: Math.random });
+    expect(fromRegistry).toHaveLength(fromLegacy.length);
+    for (let i = 0; i < fromLegacy.length; i += 1) {
+      expect(fromRegistry[i].damage).toBe(fromLegacy[i].damage);
+      expect(fromRegistry[i].pierce).toBe(fromLegacy[i].pierce);
+    }
+  });
+});
+
+import { PASSIVES as PASSIVES_REGISTRY } from './content/passives.registry';
+import { EVOLUTIONS as EVOLUTIONS_REGISTRY } from './content/evolutions.registry';
+import { createInitialGameState } from './state';
+
+describe('GameEngine reroll/banish/lock commands', () => {
+  it('rerollChoices is a no-op when not in levelUp phase', () => {
+    const engine = new GameEngine(() => 0.5);
+    engine.startRun();
+    engine.rerollChoices();
+    expect(engine.getSnapshot().phase).toBe('playing');
+  });
+
+  it('drives a level-up via debugLevelUp and exercises reroll, lock, banish', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      startRun: () => void;
+      debugLevelUp: () => void;
+      rerollChoices: () => void;
+      banishChoice: (i: number) => void;
+      lockChoice: (i: number) => void;
+      state: {
+        phase: string;
+        upgradeChoices: UpgradeOption[];
+        agency: { rerolls: number; banishes: number; locks: number; maxRerolls: number; maxLocks: number };
+        bannedUpgradeIds: string[];
+        lockedSlot: number | null;
+      };
+    };
+    engine.startRun();
+    engine.debugLevelUp();
+    expect(engine.state.phase).toBe('levelUp');
+    expect(engine.state.upgradeChoices.length).toBeGreaterThan(0);
+    expect(engine.state.agency.rerolls).toBe(2);
+    expect(engine.state.agency.locks).toBe(1);
+
+    engine.lockChoice(0);
+    expect(engine.state.lockedSlot).toBe(0);
+    expect(engine.state.agency.locks).toBe(0);
+    const lockedId = engine.state.upgradeChoices[0].id;
+
+    engine.rerollChoices();
+    expect(engine.state.agency.rerolls).toBe(1);
+    expect(engine.state.upgradeChoices[0].id).toBe(lockedId);
+    expect(engine.state.lockedSlot).toBe(0);
+
+    const slot1IdBeforeBanish = engine.state.upgradeChoices[1]?.id;
+    if (slot1IdBeforeBanish) {
+      engine.banishChoice(1);
+      expect(engine.state.bannedUpgradeIds).toContain(slot1IdBeforeBanish);
+      expect(engine.state.agency.banishes).toBe(0);
+      expect(engine.state.upgradeChoices[0].id).toBe(lockedId);
+    }
+
+    engine.rerollChoices();
+    expect(engine.state.agency.rerolls).toBe(0);
+    engine.rerollChoices();
+    expect(engine.state.agency.rerolls).toBe(0);
+  });
+
+  it('lockChoice toggles off without refunding the lock', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      startRun: () => void;
+      debugLevelUp: () => void;
+      lockChoice: (i: number) => void;
+      state: { agency: { locks: number }; lockedSlot: number | null };
+    };
+    engine.startRun();
+    engine.debugLevelUp();
+    engine.lockChoice(0);
+    expect(engine.state.lockedSlot).toBe(0);
+    expect(engine.state.agency.locks).toBe(0);
+    engine.lockChoice(0);
+    expect(engine.state.lockedSlot).toBeNull();
+    expect(engine.state.agency.locks).toBe(0);
+  });
+});
+
+describe('createUpgradeChoices banned + preserveCard', () => {
+  function makeRng(): () => number {
+    let s = 1;
+    return () => {
+      s = (s * 9301 + 49297) % 233280;
+      return s / 233280;
+    };
+  }
+
+  it('never returns a banned upgrade id', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapons = createStartingWeapons();
+    const banned = ['stat-damage'];
+    for (let i = 0; i < 20; i += 1) {
+      const choices = createUpgradeChoices(player, weapons, makeRng(), banned);
+      expect(choices.find((c) => c.id === 'stat-damage')).toBeUndefined();
+    }
+  });
+
+  it('preserves the supplied card at index 0 of the result', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapons = createStartingWeapons();
+    const preserve: UpgradeOption = {
+      id: 'stat-pickup-radius',
+      title: 'Gem Magnet',
+      description: '+28 pickup radius',
+      kind: 'stat',
+      stat: 'pickupRadius',
+      rarity: 'common',
+    };
+    const choices = createUpgradeChoices(player, weapons, makeRng(), [], preserve);
+    expect(choices[0].id).toBe('stat-pickup-radius');
+    expect(choices.length).toBeLessThanOrEqual(3);
+  });
+});
+
+import { calculateRunReward, loadWallet, saveWallet } from './wallet';
+
+describe('wallet', () => {
+  beforeEach(() => {
+    const store: Record<string, string> = {};
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => { store[k] = v; },
+      removeItem: (k: string) => { delete store[k]; },
+      clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+      key: () => null,
+      length: 0,
+    } as Storage;
+  });
+
+  it('calculateRunReward is deterministic for fixed stats', () => {
+    const stats = { timeSurvived: 600, kills: 400, level: 12, upgradesCollected: 11, damageDealt: 25000 };
+    expect(calculateRunReward(stats, false)).toBe(60 + 20 + 60 + 0);
+    expect(calculateRunReward(stats, true)).toBe(60 + 20 + 60 + 200);
+  });
+
+  it('loadWallet returns zeros when nothing saved', () => {
+    const w = loadWallet();
+    expect(w.shards).toBe(0);
+    expect(w.lifetimeEarned).toBe(0);
+  });
+
+  it('saveWallet round-trips through loadWallet', () => {
+    saveWallet({ shards: 123, lifetimeEarned: 456 });
+    const w = loadWallet();
+    expect(w.shards).toBe(123);
+    expect(w.lifetimeEarned).toBe(456);
+  });
+});
+
+describe('GameSnapshot agency fields', () => {
+  it('initial snapshot exposes agency, bannedUpgradeIds, lockedSlot', () => {
+    const engine = new GameEngine(() => 0.5);
+    const snap = engine.getSnapshot();
+    expect(snap.agency).toBeDefined();
+    expect(snap.agency.rerolls).toBe(2);
+    expect(snap.agency.banishes).toBe(1);
+    expect(snap.agency.locks).toBe(1);
+    expect(snap.bannedUpgradeIds).toEqual([]);
+    expect(snap.lockedSlot).toBeNull();
+  });
+});
+
+describe('upgrade agency state', () => {
+  it('initial GameState has 2 rerolls, 1 banish, 1 lock available', () => {
+    const s = createInitialGameState();
+    expect(s.agency.rerolls).toBe(2);
+    expect(s.agency.banishes).toBe(1);
+    expect(s.agency.locks).toBe(1);
+    expect(s.agency.maxRerolls).toBe(2);
+    expect(s.agency.maxLocks).toBe(1);
+    expect(s.bannedUpgradeIds).toEqual([]);
+    expect(s.lockedSlot).toBeNull();
+  });
+});
+
+describe('evolutions registry', () => {
+  it('has all four evolutions with correct weapon/passive pairing', () => {
+    expect(EVOLUTIONS_REGISTRY['starfall-lance'].weaponId).toBe('magic-bolt');
+    expect(EVOLUTIONS_REGISTRY['starfall-lance'].passiveId).toBe('cooldown-sigil');
+    expect(EVOLUTIONS_REGISTRY['gravitic-halo'].weaponId).toBe('orbit');
+    expect(EVOLUTIONS_REGISTRY['supernova-bloom'].weaponId).toBe('area-pulse');
+    expect(EVOLUTIONS_REGISTRY['comet-volley'].weaponId).toBe('piercing-arrow');
+  });
+
+  it('all entries default to weaponLevelRequired=6 and passiveLevelRequired=2', () => {
+    for (const def of Object.values(EVOLUTIONS_REGISTRY)) {
+      expect(def.weaponLevelRequired).toBe(6);
+      expect(def.passiveLevelRequired).toBe(2);
+    }
+  });
+});
+
+describe('passives registry', () => {
+  it('has identical metadata to the content.ts PASSIVES array', () => {
+    const ids = ['cooldown-sigil', 'astral-lens', 'void-core', 'keen-fletching'];
+    for (const id of ids) {
+      expect(PASSIVES_REGISTRY[id]).toBeDefined();
+      expect(PASSIVES_REGISTRY[id].maxLevel).toBe(5);
+    }
+  });
+
+  it('apply() reproduces existing passive effects', () => {
+    const p0 = createStartingPlayer({ x: 0, y: 0 });
+    expect(PASSIVES_REGISTRY['cooldown-sigil'].apply(p0).attackRateMultiplier).toBeCloseTo(p0.attackRateMultiplier * 1.08);
+    expect(PASSIVES_REGISTRY['astral-lens'].apply(p0).pickupRadius).toBe(p0.pickupRadius + 20);
+    expect(PASSIVES_REGISTRY['void-core'].apply(p0).areaMultiplier).toBeCloseTo(p0.areaMultiplier * 1.1);
+    expect(PASSIVES_REGISTRY['keen-fletching'].apply(p0).projectileSpeedMultiplier).toBeCloseTo(p0.projectileSpeedMultiplier * 1.12);
+  });
+});
+
+describe('weapons registry', () => {
+  it('has an entry for every WeaponId used by createStartingWeapons', () => {
+    const startingIds = createStartingWeapons().map((w) => w.id);
+    for (const id of startingIds) {
+      expect(WEAPONS[id]).toBeDefined();
+      expect(WEAPONS[id].id).toBe(id);
+    }
+  });
+
+  it('exposes baseFireRate, baseDamage, baseRange that match createStartingWeapons defaults', () => {
+    for (const w of createStartingWeapons()) {
+      const def = WEAPONS[w.id];
+      expect(def.baseFireRate).toBe(w.fireRate);
+      expect(def.baseDamage).toBe(w.damage);
+      expect(def.baseRange).toBe(w.range);
+    }
   });
 });

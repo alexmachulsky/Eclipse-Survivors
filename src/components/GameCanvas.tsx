@@ -143,7 +143,7 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
 
     const onKeyDown = (event: KeyboardEvent) => {
       const mapped = keyMap[event.code];
-      const debug = new URLSearchParams(window.location.search).has('debug');
+      const debug = import.meta.env.DEV && new URLSearchParams(window.location.search).has('debug');
 
       if (mapped) {
         engine.setMovement({ [mapped]: true });

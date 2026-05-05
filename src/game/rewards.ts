@@ -1,5 +1,7 @@
-import { EVOLUTIONS, PASSIVES, RARE_STAT_UPGRADES, STAT_UPGRADES } from './content';
-import type { EvolutionId, Player, UpgradeOption, Weapon } from './types';
+import { PASSIVES, RARE_STAT_UPGRADES, STAT_UPGRADES } from './content';
+import { PASSIVES as PASSIVE_REGISTRY } from './content/passives.registry';
+import { EVOLUTIONS as EVOLUTION_REGISTRY } from './content/evolutions.registry';
+import type { Player, UpgradeOption, Weapon } from './types';
 
 function pickOne<T>(items: T[], rng: () => number): T | undefined {
   if (items.length === 0) {
@@ -24,7 +26,9 @@ function createWeaponChoices(weapons: Weapon[]): UpgradeOption[] {
       title: weapon.unlocked ? `${weapon.name} II+` : `Unlock ${weapon.name}`,
       description: weapon.unlocked ? `Increase ${weapon.name} power and uptime` : `Add ${weapon.name} to your arsenal`,
       kind: 'weapon',
-      weaponId: weapon.id
+      weaponId: weapon.id,
+      currentWeaponLevel: weapon.level,
+      rarity: 'rare'
     }));
 }
 
@@ -39,20 +43,26 @@ function createPassiveChoices(player: Player): UpgradeOption[] {
         title: currentLevel > 0 ? `${passive.name} ${currentLevel + 1}` : passive.name,
         description: passive.description,
         kind: 'passive',
-        passiveId: passive.id
+        passiveId: passive.id,
+        rarity: 'common'
       };
     });
 }
 
 export function getEligibleEvolutions(player: Player, weapons: Weapon[]) {
-  return EVOLUTIONS.filter((evolution) => {
+  return Object.values(EVOLUTION_REGISTRY).filter((evolution) => {
     const weapon = weapons.find((item) => item.id === evolution.weaponId);
-    return Boolean(weapon?.unlocked && weapon.level >= 6 && !weapon.evolved && (player.passives[evolution.passiveId] ?? 0) >= 2);
+    return Boolean(
+      weapon?.unlocked &&
+      weapon.level >= evolution.weaponLevelRequired &&
+      !weapon.evolved &&
+      (player.passives[evolution.passiveId] ?? 0) >= evolution.passiveLevelRequired
+    );
   });
 }
 
-function createEvolutionOption(evolutionId: EvolutionId): UpgradeOption {
-  const evolution = EVOLUTIONS.find((item) => item.id === evolutionId);
+function createEvolutionOption(evolutionId: string): UpgradeOption {
+  const evolution = EVOLUTION_REGISTRY[evolutionId];
 
   if (!evolution) {
     throw new Error(`Unknown evolution: ${evolutionId}`);
@@ -65,20 +75,52 @@ function createEvolutionOption(evolutionId: EvolutionId): UpgradeOption {
     kind: 'evolution',
     weaponId: evolution.weaponId,
     passiveId: evolution.passiveId,
-    evolutionId: evolution.id
+    evolutionId: evolution.id,
+    rarity: 'epic'
   };
 }
 
-export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () => number): UpgradeOption[] {
-  const weaponChoices = createWeaponChoices(weapons);
-  const passiveChoices = createPassiveChoices(player);
+export function createUpgradeChoices(
+  player: Player,
+  weapons: Weapon[],
+  rng: () => number,
+  bannedIds: string[] = [],
+  preserveCard?: UpgradeOption,
+): UpgradeOption[] {
+  const statDeltaMap: Record<string, string> = {
+    damage: '+18% damage',
+    attackRate: '+14% attack speed',
+    moveSpeed: '+10% move speed',
+    maxHealth: '+24 max HP',
+    pickupRadius: '+28 pickup radius',
+    area: '+18% area',
+    projectileSpeed: '+18% proj. speed',
+  };
+
+  const isBanned = (id: string) => bannedIds.includes(id);
+  const weaponChoices = createWeaponChoices(weapons).filter((c) => !isBanned(c.id));
+  const passiveChoices = createPassiveChoices(player).filter((c) => !isBanned(c.id));
   const choices: UpgradeOption[] = [];
 
-  addUnique(choices, pickOne(weaponChoices, rng));
-  addUnique(choices, pickOne(passiveChoices, rng));
+  if (preserveCard && !isBanned(preserveCard.id)) {
+    choices.push(preserveCard);
+  }
+
+  const candidateWeapon = pickOne(weaponChoices.filter((c) => !choices.some((x) => x.id === c.id)), rng);
+  addUnique(choices, candidateWeapon);
+  const candidatePassive = pickOne(passiveChoices.filter((c) => !choices.some((x) => x.id === c.id)), rng);
+  addUnique(choices, candidatePassive);
+
+  const statChoices = STAT_UPGRADES
+    .filter((c) => !isBanned(c.id))
+    .map((choice) => ({
+      ...choice,
+      statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
+      rarity: 'common' as const,
+    }));
 
   const pool = [
-    ...STAT_UPGRADES,
+    ...statChoices,
     ...weaponChoices,
     ...passiveChoices
   ].filter((choice) => !choices.some((selected) => selected.id === choice.id));
@@ -92,7 +134,23 @@ export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () 
   return choices;
 }
 
-export function createChestRewardChoices(player: Player, weapons: Weapon[], rng: () => number): UpgradeOption[] {
+export function createChestRewardChoices(
+  player: Player,
+  weapons: Weapon[],
+  rng: () => number,
+  bannedIds: string[] = [],
+): UpgradeOption[] {
+  const statDeltaMap: Record<string, string> = {
+    damage: '+24% damage',
+    attackRate: '+14% attack speed',
+    moveSpeed: '+10% move speed',
+    maxHealth: '+24 max HP',
+    pickupRadius: '+28 pickup radius',
+    area: '+18% area',
+    projectileSpeed: '+18% proj. speed',
+  };
+
+  const isBanned = (id: string) => bannedIds.includes(id);
   const choices: UpgradeOption[] = [];
   const eligibleEvolution = getEligibleEvolutions(player, weapons)[0];
 
@@ -100,10 +158,18 @@ export function createChestRewardChoices(player: Player, weapons: Weapon[], rng:
     choices.push(createEvolutionOption(eligibleEvolution.id));
   }
 
+  const rareStatChoices = RARE_STAT_UPGRADES
+    .filter((c) => !isBanned(c.id))
+    .map((choice) => ({
+      ...choice,
+      statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
+      rarity: 'rare' as const,
+    }));
+
   const pool = [
-    ...RARE_STAT_UPGRADES,
-    ...createWeaponChoices(weapons),
-    ...createPassiveChoices(player)
+    ...rareStatChoices,
+    ...createWeaponChoices(weapons).filter((c) => !isBanned(c.id)),
+    ...createPassiveChoices(player).filter((c) => !isBanned(c.id))
   ].filter((choice) => !choices.some((selected) => selected.id === choice.id));
 
   while (choices.length < 3 && pool.length > 0) {
@@ -115,8 +181,8 @@ export function createChestRewardChoices(player: Player, weapons: Weapon[], rng:
   return choices;
 }
 
-export function applyEvolution(weapons: Weapon[], evolutionId: EvolutionId): Weapon[] {
-  const evolution = EVOLUTIONS.find((item) => item.id === evolutionId);
+export function applyEvolution(weapons: Weapon[], evolutionId: string): Weapon[] {
+  const evolution = EVOLUTION_REGISTRY[evolutionId];
 
   if (!evolution) {
     return weapons;
@@ -130,7 +196,7 @@ export function applyEvolution(weapons: Weapon[], evolutionId: EvolutionId): Wea
     return {
       ...weapon,
       evolved: true,
-      evolutionId,
+      evolutionId: evolution.id,
       level: Math.max(6, weapon.level),
       unlocked: true,
       cooldown: Math.min(weapon.cooldown, weapon.fireRate * 0.25)
@@ -162,20 +228,11 @@ export function applyUpgrade(player: Player, weapons: Weapon[], upgrade: Upgrade
   }
 
   if (upgrade.kind === 'passive' && upgrade.passiveId) {
+    const def = PASSIVE_REGISTRY[upgrade.passiveId];
+    if (!def) return { player, weapons };
     const level = (player.passives[upgrade.passiveId] ?? 0) + 1;
     const passives = { ...player.passives, [upgrade.passiveId]: level };
-    let nextPlayer: Player = { ...player, passives };
-
-    if (upgrade.passiveId === 'cooldown-sigil') {
-      nextPlayer = { ...nextPlayer, attackRateMultiplier: nextPlayer.attackRateMultiplier * 1.08 };
-    } else if (upgrade.passiveId === 'astral-lens') {
-      nextPlayer = { ...nextPlayer, pickupRadius: nextPlayer.pickupRadius + 20 };
-    } else if (upgrade.passiveId === 'void-core') {
-      nextPlayer = { ...nextPlayer, areaMultiplier: nextPlayer.areaMultiplier * 1.1 };
-    } else if (upgrade.passiveId === 'keen-fletching') {
-      nextPlayer = { ...nextPlayer, projectileSpeedMultiplier: nextPlayer.projectileSpeedMultiplier * 1.12 };
-    }
-
+    const nextPlayer = def.apply({ ...player, passives });
     return { player: nextPlayer, weapons };
   }
 

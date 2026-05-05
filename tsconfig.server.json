@@ -9,5 +9,6 @@
     "esModuleInterop": true,
     "noEmit": true
   },
-  "include": ["server/**/*.ts", "src/game/GameSim.ts"]
+  "include": ["server/**/*.ts", "src/game/GameSim.ts"],
+  "exclude": ["server/**/*.test.ts"]
 }

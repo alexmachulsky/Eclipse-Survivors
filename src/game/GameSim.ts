@@ -38,6 +38,11 @@ const MIN_SPAWN_INTERVAL = 0.26;
 const MAX_PARTICLES = 220;
 const MAX_DAMAGE_TEXTS = 90;
 const MAX_TELEGRAPHS = 24;
+const MAX_ENEMIES = 240;
+const MAX_PLAYER_PROJECTILES = 240;
+const MAX_ENEMY_PROJECTILES = 180;
+const MAX_GEMS = 400;
+const MAX_REWARD_CHESTS = 12;
 const HEALTH_PICKUP_MIN_INTERVAL = 10;
 const HEALTH_PICKUP_INTERVAL_VARIANCE = 10;
 const MAX_HEALTH_PICKUPS = 4;
@@ -169,6 +174,11 @@ export class GameSim {
     }
 
     runtime.status = runtime.player.health > 0 ? 'active' : 'downed';
+  }
+
+  removePlayer(playerId: string): void {
+    this.state.players = this.state.players.filter((runtime) => runtime.id !== playerId);
+    this.commands.delete(playerId);
   }
 
   setPlayerStatus(playerId: string, status: PlayerStatus): void {
@@ -343,7 +353,7 @@ export class GameSim {
   private spawnEnemies(dt: number): void {
     this.spawnTimer -= dt;
 
-    if (this.spawnTimer > 0) {
+    if (this.spawnTimer > 0 || this.state.enemies.length >= MAX_ENEMIES) {
       return;
     }
 
@@ -353,6 +363,9 @@ export class GameSim {
     const viewport = this.getSharedViewport(160);
 
     for (let index = 0; index < packSize; index += 1) {
+      if (this.state.enemies.length >= MAX_ENEMIES) {
+        break;
+      }
       const type = chooseEnemyType(this.state.elapsed, tier, this.rng);
       this.state.enemies.push(this.applyCurseToEnemy(spawnEnemyOutsideViewport(type, viewport, tier, this.rng)));
     }
@@ -487,6 +500,9 @@ export class GameSim {
         }
 
         if (weapon.id === 'area-pulse') {
+          if (projectiles.length >= MAX_PLAYER_PROJECTILES) {
+            continue;
+          }
           projectiles.push({ ...createAreaPulse(weapon, runtime.player), ownerPlayerId: runtime.id });
           weapon.cooldown = Math.max(weapon.evolved ? 0.45 : 0.7, weapon.fireRate * Math.pow(weapon.evolved ? 0.84 : 0.9, weapon.level - 1));
           continue;
@@ -498,12 +514,21 @@ export class GameSim {
           continue;
         }
 
-        projectiles.push(...fireWeaponAtTarget(weapon, runtime.player, target).map((projectile) => ({ ...projectile, ownerPlayerId: runtime.id })));
+        const fired = fireWeaponAtTarget(weapon, runtime.player, target);
+        for (const projectile of fired) {
+          if (projectiles.length >= MAX_PLAYER_PROJECTILES) {
+            break;
+          }
+          projectiles.push({ ...projectile, ownerPlayerId: runtime.id });
+        }
         weapon.cooldown = Math.max(weapon.evolved ? 0.1 : 0.16, weapon.fireRate * Math.pow(weapon.evolved ? 0.8 : 0.88, weapon.level - 1));
       }
     }
 
-    this.state.playerProjectiles.push(...projectiles);
+    const availableSlots = MAX_PLAYER_PROJECTILES - this.state.playerProjectiles.length;
+    if (availableSlots > 0) {
+      this.state.playerProjectiles.push(...projectiles.slice(0, availableSlots));
+    }
   }
 
   private resolveOrbitHits(runtime: PlayerRuntime, weapon: Weapon): void {
@@ -567,7 +592,9 @@ export class GameSim {
         const viewport = this.getSharedViewport(120);
         for (let index = 0; index < (phase === 3 ? 4 : 3); index += 1) {
           const type = index % 2 === 0 ? 'fast' : 'basic';
-          this.state.enemies.push(this.applyCurseToEnemy(spawnEnemyOutsideViewport(type, viewport, this.state.difficultyTier, this.rng)));
+          if (this.state.enemies.length < MAX_ENEMIES) {
+            this.state.enemies.push(this.applyCurseToEnemy(spawnEnemyOutsideViewport(type, viewport, this.state.difficultyTier, this.rng)));
+          }
         }
       }
     }
@@ -605,6 +632,9 @@ export class GameSim {
           ? (Math.PI * 2 * index) / spreadCount
           : spreadCount === 1 ? 0 : (index - (spreadCount - 1) / 2) * 0.24;
         const shotAngle = enemy.type === 'boss' && phase >= 2 ? offset + this.state.elapsed * 0.35 : angle + offset;
+        if (shots.length >= MAX_ENEMY_PROJECTILES) {
+          break;
+        }
         shots.push({
           id: `enemy-shot-${enemy.id}-${this.state.elapsed}-${index}`,
           owner: 'enemy',
@@ -623,7 +653,10 @@ export class GameSim {
       enemy.cooldown = enemy.type === 'boss' ? (phase === 3 ? 0.92 : phase === 2 ? 1.15 : 1.35) : enemy.rank === 'elite' ? 1.65 : 2.2;
     }
 
-    this.state.enemyProjectiles.push(...shots);
+    const availableSlots = MAX_ENEMY_PROJECTILES - this.state.enemyProjectiles.length;
+    if (availableSlots > 0) {
+      this.state.enemyProjectiles.push(...shots.slice(0, availableSlots));
+    }
   }
 
   private resolveCombat(): void {
@@ -740,7 +773,9 @@ export class GameSim {
       for (const runtime of this.getConnectedPlayers()) {
         runtime.stats.kills += 1;
       }
-      this.state.gems.push(createXpGem(enemy));
+      if (this.state.gems.length < MAX_GEMS) {
+        this.state.gems.push(createXpGem(enemy));
+      }
       if (enemy.rank === 'elite') {
         this.createRewardChest(enemy.position, 'elite');
       }
@@ -762,6 +797,10 @@ export class GameSim {
   }
 
   private createRewardChest(position: Vector, source: RewardChest['source']): void {
+    if (this.state.rewardChests.length >= MAX_REWARD_CHESTS) {
+      return;
+    }
+
     this.chestSequence += 1;
     this.state.rewardChests.push({
       id: `chest-${this.chestSequence}`,
