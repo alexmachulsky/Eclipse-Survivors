@@ -907,6 +907,78 @@ import { PASSIVES as PASSIVES_REGISTRY } from './content/passives.registry';
 import { EVOLUTIONS as EVOLUTIONS_REGISTRY } from './content/evolutions.registry';
 import { createInitialGameState } from './state';
 
+describe('GameEngine reroll/banish/lock commands', () => {
+  it('rerollChoices is a no-op when not in levelUp phase', () => {
+    const engine = new GameEngine(() => 0.5);
+    engine.startRun();
+    engine.rerollChoices();
+    expect(engine.getSnapshot().phase).toBe('playing');
+  });
+
+  it('drives a level-up via debugLevelUp and exercises reroll, lock, banish', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      startRun: () => void;
+      debugLevelUp: () => void;
+      rerollChoices: () => void;
+      banishChoice: (i: number) => void;
+      lockChoice: (i: number) => void;
+      state: {
+        phase: string;
+        upgradeChoices: UpgradeOption[];
+        agency: { rerolls: number; banishes: number; locks: number; maxRerolls: number; maxLocks: number };
+        bannedUpgradeIds: string[];
+        lockedSlot: number | null;
+      };
+    };
+    engine.startRun();
+    engine.debugLevelUp();
+    expect(engine.state.phase).toBe('levelUp');
+    expect(engine.state.upgradeChoices.length).toBeGreaterThan(0);
+    expect(engine.state.agency.rerolls).toBe(2);
+    expect(engine.state.agency.locks).toBe(1);
+
+    engine.lockChoice(0);
+    expect(engine.state.lockedSlot).toBe(0);
+    expect(engine.state.agency.locks).toBe(0);
+    const lockedId = engine.state.upgradeChoices[0].id;
+
+    engine.rerollChoices();
+    expect(engine.state.agency.rerolls).toBe(1);
+    expect(engine.state.upgradeChoices[0].id).toBe(lockedId);
+    expect(engine.state.lockedSlot).toBe(0);
+
+    const slot1IdBeforeBanish = engine.state.upgradeChoices[1]?.id;
+    if (slot1IdBeforeBanish) {
+      engine.banishChoice(1);
+      expect(engine.state.bannedUpgradeIds).toContain(slot1IdBeforeBanish);
+      expect(engine.state.agency.banishes).toBe(0);
+      expect(engine.state.upgradeChoices[0].id).toBe(lockedId);
+    }
+
+    engine.rerollChoices();
+    expect(engine.state.agency.rerolls).toBe(0);
+    engine.rerollChoices();
+    expect(engine.state.agency.rerolls).toBe(0);
+  });
+
+  it('lockChoice toggles off without refunding the lock', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      startRun: () => void;
+      debugLevelUp: () => void;
+      lockChoice: (i: number) => void;
+      state: { agency: { locks: number }; lockedSlot: number | null };
+    };
+    engine.startRun();
+    engine.debugLevelUp();
+    engine.lockChoice(0);
+    expect(engine.state.lockedSlot).toBe(0);
+    expect(engine.state.agency.locks).toBe(0);
+    engine.lockChoice(0);
+    expect(engine.state.lockedSlot).toBeNull();
+    expect(engine.state.agency.locks).toBe(0);
+  });
+});
+
 describe('createUpgradeChoices banned + preserveCard', () => {
   function makeRng(): () => number {
     let s = 1;

@@ -122,7 +122,10 @@ export class GameEngine {
       return;
     }
 
-    this.state.upgradeChoices = createUpgradeChoices(this.state.player, this.state.weapons, this.rng);
+    this.state.agency.rerolls = this.state.agency.maxRerolls;
+    this.state.agency.locks = this.state.agency.maxLocks;
+    this.state.lockedSlot = null;
+    this.state.upgradeChoices = createUpgradeChoices(this.state.player, this.state.weapons, this.rng, this.state.bannedUpgradeIds);
     this.state.phase = 'levelUp';
   }
 
@@ -221,10 +224,59 @@ export class GameEngine {
     this.state.stats.upgradesCollected += 1;
     this.state.upgradeChoices = [];
     this.state.pendingChestChoices = [];
+    this.state.lockedSlot = null;
     // 2c: Track upgrade history
     this.state.upgradeHistory.push(choice.title);
     this.state.phase = 'playing';
     this.addBurstParticles(this.state.player.position, choice.kind === 'evolution' ? '#ffd166' : '#5eead4', choice.kind === 'evolution' ? 34 : 14);
+  }
+
+  rerollChoices(): void {
+    if (this.state.phase !== 'levelUp') return;
+    if (this.state.agency.rerolls <= 0) return;
+    const lockedIdx = this.state.lockedSlot;
+    const lockedCard = lockedIdx !== null ? this.state.upgradeChoices[lockedIdx] : undefined;
+    this.state.upgradeChoices = createUpgradeChoices(
+      this.state.player,
+      this.state.weapons,
+      this.rng,
+      this.state.bannedUpgradeIds,
+      lockedCard,
+    );
+    this.state.lockedSlot = lockedCard ? 0 : null;
+    this.state.agency.rerolls -= 1;
+  }
+
+  banishChoice(index: number): void {
+    if (this.state.phase !== 'levelUp') return;
+    if (this.state.agency.banishes <= 0) return;
+    const card = this.state.upgradeChoices[index];
+    if (!card) return;
+    if (this.state.lockedSlot === index) return;
+    this.state.bannedUpgradeIds.push(card.id);
+    const lockedIdx = this.state.lockedSlot;
+    const lockedCard = lockedIdx !== null ? this.state.upgradeChoices[lockedIdx] : undefined;
+    this.state.upgradeChoices = createUpgradeChoices(
+      this.state.player,
+      this.state.weapons,
+      this.rng,
+      this.state.bannedUpgradeIds,
+      lockedCard,
+    );
+    this.state.lockedSlot = lockedCard ? 0 : null;
+    this.state.agency.banishes -= 1;
+  }
+
+  lockChoice(index: number): void {
+    if (this.state.phase !== 'levelUp') return;
+    if (index < 0 || index >= this.state.upgradeChoices.length) return;
+    if (this.state.lockedSlot === index) {
+      this.state.lockedSlot = null;
+      return;
+    }
+    if (this.state.agency.locks <= 0) return;
+    this.state.lockedSlot = index;
+    this.state.agency.locks -= 1;
   }
 
   update(dt: number): void {
@@ -956,7 +1008,10 @@ export class GameEngine {
       this.state.level += 1;
       this.state.stats.level = this.state.level;
       this.state.xpToNext = getXpThreshold(this.state.level);
-      this.state.upgradeChoices = createUpgradeChoices(this.state.player, this.state.weapons, this.rng);
+      this.state.agency.rerolls = this.state.agency.maxRerolls;
+      this.state.agency.locks = this.state.agency.maxLocks;
+      this.state.lockedSlot = null;
+      this.state.upgradeChoices = createUpgradeChoices(this.state.player, this.state.weapons, this.rng, this.state.bannedUpgradeIds);
       this.state.phase = 'levelUp';
       this.state.screenShake = 8;
 
