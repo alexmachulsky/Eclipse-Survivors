@@ -45,6 +45,9 @@ export interface GameSnapshot {
   upgradeHistory: string[];
   bossApproachingIn: number | null;  // computed: 300 - elapsed when ≤30s && !bossSpawned
   healthRatio: number;               // health/maxHealth convenience field for HUD
+  agency: { rerolls: number; banishes: number; locks: number; maxRerolls: number; maxLocks: number };
+  bannedUpgradeIds: string[];
+  lockedSlot: number | null;
 }
 
 const MIN_SPAWN_INTERVAL = 0.26;
@@ -407,7 +410,10 @@ export class GameEngine {
       bossApproachingIn: !this.state.bossSpawned && (300 - this.state.elapsed) <= 30
         ? Math.ceil(300 - this.state.elapsed)
         : null,
-      healthRatio: this.state.player.health / this.state.player.maxHealth
+      healthRatio: this.state.player.health / this.state.player.maxHealth,
+      agency: { ...this.state.agency },
+      bannedUpgradeIds: [...this.state.bannedUpgradeIds],
+      lockedSlot: this.state.lockedSlot
     };
   }
 

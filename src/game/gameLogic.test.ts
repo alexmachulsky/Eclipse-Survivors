@@ -1015,6 +1015,19 @@ describe('createUpgradeChoices banned + preserveCard', () => {
   });
 });
 
+describe('GameSnapshot agency fields', () => {
+  it('initial snapshot exposes agency, bannedUpgradeIds, lockedSlot', () => {
+    const engine = new GameEngine(() => 0.5);
+    const snap = engine.getSnapshot();
+    expect(snap.agency).toBeDefined();
+    expect(snap.agency.rerolls).toBe(2);
+    expect(snap.agency.banishes).toBe(1);
+    expect(snap.agency.locks).toBe(1);
+    expect(snap.bannedUpgradeIds).toEqual([]);
+    expect(snap.lockedSlot).toBeNull();
+  });
+});
+
 describe('upgrade agency state', () => {
   it('initial GameState has 2 rerolls, 1 banish, 1 lock available', () => {
     const s = createInitialGameState();
