@@ -85,9 +85,11 @@ export interface Projectile {
   hitIds?: Set<string>;
 }
 
-export type WeaponId = 'magic-bolt' | 'orbit' | 'area-pulse' | 'piercing-arrow';
-export type PassiveId = 'cooldown-sigil' | 'astral-lens' | 'void-core' | 'keen-fletching';
-export type EvolutionId = 'starfall-lance' | 'gravitic-halo' | 'supernova-bloom' | 'comet-volley';
+// String aliases — actual valid values live in src/game/content/*.registry.ts.
+// Kept as named aliases so existing call sites read clearly without churn.
+export type WeaponId = string;
+export type PassiveId = string;
+export type EvolutionId = string;
 
 export interface Weapon {
   id: WeaponId;

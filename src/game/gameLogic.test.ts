@@ -904,6 +904,24 @@ describe('weapons registry fire() round-trip', () => {
 });
 
 import { PASSIVES as PASSIVES_REGISTRY } from './content/passives.registry';
+import { EVOLUTIONS as EVOLUTIONS_REGISTRY } from './content/evolutions.registry';
+
+describe('evolutions registry', () => {
+  it('has all four evolutions with correct weapon/passive pairing', () => {
+    expect(EVOLUTIONS_REGISTRY['starfall-lance'].weaponId).toBe('magic-bolt');
+    expect(EVOLUTIONS_REGISTRY['starfall-lance'].passiveId).toBe('cooldown-sigil');
+    expect(EVOLUTIONS_REGISTRY['gravitic-halo'].weaponId).toBe('orbit');
+    expect(EVOLUTIONS_REGISTRY['supernova-bloom'].weaponId).toBe('area-pulse');
+    expect(EVOLUTIONS_REGISTRY['comet-volley'].weaponId).toBe('piercing-arrow');
+  });
+
+  it('all entries default to weaponLevelRequired=6 and passiveLevelRequired=2', () => {
+    for (const def of Object.values(EVOLUTIONS_REGISTRY)) {
+      expect(def.weaponLevelRequired).toBe(6);
+      expect(def.passiveLevelRequired).toBe(2);
+    }
+  });
+});
 
 describe('passives registry', () => {
   it('has identical metadata to the content.ts PASSIVES array', () => {

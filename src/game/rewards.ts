@@ -1,6 +1,7 @@
-import { EVOLUTIONS, PASSIVES, RARE_STAT_UPGRADES, STAT_UPGRADES } from './content';
+import { PASSIVES, RARE_STAT_UPGRADES, STAT_UPGRADES } from './content';
 import { PASSIVES as PASSIVE_REGISTRY } from './content/passives.registry';
-import type { EvolutionId, Player, UpgradeOption, Weapon } from './types';
+import { EVOLUTIONS as EVOLUTION_REGISTRY } from './content/evolutions.registry';
+import type { Player, UpgradeOption, Weapon } from './types';
 
 function pickOne<T>(items: T[], rng: () => number): T | undefined {
   if (items.length === 0) {
@@ -49,14 +50,19 @@ function createPassiveChoices(player: Player): UpgradeOption[] {
 }
 
 export function getEligibleEvolutions(player: Player, weapons: Weapon[]) {
-  return EVOLUTIONS.filter((evolution) => {
+  return Object.values(EVOLUTION_REGISTRY).filter((evolution) => {
     const weapon = weapons.find((item) => item.id === evolution.weaponId);
-    return Boolean(weapon?.unlocked && weapon.level >= 6 && !weapon.evolved && (player.passives[evolution.passiveId] ?? 0) >= 2);
+    return Boolean(
+      weapon?.unlocked &&
+      weapon.level >= evolution.weaponLevelRequired &&
+      !weapon.evolved &&
+      (player.passives[evolution.passiveId] ?? 0) >= evolution.passiveLevelRequired
+    );
   });
 }
 
-function createEvolutionOption(evolutionId: EvolutionId): UpgradeOption {
-  const evolution = EVOLUTIONS.find((item) => item.id === evolutionId);
+function createEvolutionOption(evolutionId: string): UpgradeOption {
+  const evolution = EVOLUTION_REGISTRY[evolutionId];
 
   if (!evolution) {
     throw new Error(`Unknown evolution: ${evolutionId}`);
@@ -152,8 +158,8 @@ export function createChestRewardChoices(player: Player, weapons: Weapon[], rng:
   return choices;
 }
 
-export function applyEvolution(weapons: Weapon[], evolutionId: EvolutionId): Weapon[] {
-  const evolution = EVOLUTIONS.find((item) => item.id === evolutionId);
+export function applyEvolution(weapons: Weapon[], evolutionId: string): Weapon[] {
+  const evolution = EVOLUTION_REGISTRY[evolutionId];
 
   if (!evolution) {
     return weapons;
@@ -167,7 +173,7 @@ export function applyEvolution(weapons: Weapon[], evolutionId: EvolutionId): Wea
     return {
       ...weapon,
       evolved: true,
-      evolutionId,
+      evolutionId: evolution.id,
       level: Math.max(6, weapon.level),
       unlocked: true,
       cooldown: Math.min(weapon.cooldown, weapon.fireRate * 0.25)
