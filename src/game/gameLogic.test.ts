@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { circlesOverlap, circlesOverlapSq, normalizeVector } from './collisions';
 import { SpatialGrid } from './spatialGrid';
 import { updatePlayerMovement } from './player';
@@ -1012,6 +1012,41 @@ describe('createUpgradeChoices banned + preserveCard', () => {
     const choices = createUpgradeChoices(player, weapons, makeRng(), [], preserve);
     expect(choices[0].id).toBe('stat-pickup-radius');
     expect(choices.length).toBeLessThanOrEqual(3);
+  });
+});
+
+import { calculateRunReward, loadWallet, saveWallet } from './wallet';
+
+describe('wallet', () => {
+  beforeEach(() => {
+    const store: Record<string, string> = {};
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => { store[k] = v; },
+      removeItem: (k: string) => { delete store[k]; },
+      clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+      key: () => null,
+      length: 0,
+    } as Storage;
+  });
+
+  it('calculateRunReward is deterministic for fixed stats', () => {
+    const stats = { timeSurvived: 600, kills: 400, level: 12, upgradesCollected: 11, damageDealt: 25000 };
+    expect(calculateRunReward(stats, false)).toBe(60 + 20 + 60 + 0);
+    expect(calculateRunReward(stats, true)).toBe(60 + 20 + 60 + 200);
+  });
+
+  it('loadWallet returns zeros when nothing saved', () => {
+    const w = loadWallet();
+    expect(w.shards).toBe(0);
+    expect(w.lifetimeEarned).toBe(0);
+  });
+
+  it('saveWallet round-trips through loadWallet', () => {
+    saveWallet({ shards: 123, lifetimeEarned: 456 });
+    const w = loadWallet();
+    expect(w.shards).toBe(123);
+    expect(w.lifetimeEarned).toBe(456);
   });
 });
 
