@@ -1,4 +1,4 @@
-name: PR Review & Auto-merge
+name: PR CI & Auto-merge
 
 on:
   pull_request:
@@ -28,22 +28,6 @@ jobs:
       - name: Run tests
         run: npm test
 
-  request-copilot-review:
-    name: Request Copilot Review
-    runs-on: ubuntu-latest
-    # Only run on PRs that are not already reviewed by Copilot
-    if: github.event.action == 'opened'
-    steps:
-      - uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.pulls.requestReviewers({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-              reviewers: ['copilot-pull-request-reviewer'],
-            });
-
   auto-merge:
     name: Enable Auto-merge
     runs-on: ubuntu-latest
@@ -68,3 +52,15 @@ jobs:
             --repo ${{ github.repository }} \
             --auto \
             --squash
+
+# Code review is intentionally not in CI.
+# Run Codex locally against your ChatGPT plan before pushing:
+#
+#   codex exec "Review my current branch against main. Read AGENTS.md
+#   and CLAUDE.md for project conventions. Focus on correctness,
+#   engine/React split violations, and perf hot-path rules. Skip
+#   stylistic nitpicks."
+#
+# The Codex CLI uses your ChatGPT plan when signed in via `codex login`,
+# avoiding per-token API charges. CI auto-review with plan auth is not
+# currently supported (the official codex-action requires an API key).

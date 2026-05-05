@@ -2023,7 +2023,104 @@ export class GameEngine {
     ctx.translate(player.position.x, player.position.y);
     ctx.rotate(player.facingAngle);
     ctx.globalAlpha = runtime.status === 'downed' ? 0.45 : iframes ? 0.88 : 1;
+
+    // === Per-frame engine exhaust trails (drawn behind sprite) ===
+    if (!this.fastRender && runtime.status !== 'downed') {
+      const throb = 0.75 + Math.sin(t * 18) * 0.18 + Math.sin(t * 41) * 0.08;
+      ctx.save();
+      // Three exhaust plumes — center + two side engines
+      const plumes: Array<[number, number, number]> = [
+        [-r * 0.78, 0, 1.15],          // center thruster (biggest)
+        [-r * 0.72, -r * 0.16, 0.9],   // port engine
+        [-r * 0.72, r * 0.16, 0.9],    // starboard engine
+      ];
+      for (const [px, py, scale] of plumes) {
+        const len = r * 0.7 * scale * throb;
+        const grad = ctx.createRadialGradient(px - len * 0.4, py, 0, px - len * 0.4, py, len);
+        grad.addColorStop(0, `rgba(220,240,255,${0.85 * throb})`);
+        grad.addColorStop(0.35, `rgba(120,180,255,${0.5 * throb})`);
+        grad.addColorStop(0.7, `rgba(60,120,220,${0.18 * throb})`);
+        grad.addColorStop(1, 'rgba(40,80,200,0)');
+        ctx.fillStyle = grad;
+        if (this.glowScale > 0) {
+          ctx.shadowColor = '#7ec8ff';
+          ctx.shadowBlur = 12 * this.glowScale * throb;
+        }
+        ctx.beginPath();
+        ctx.ellipse(px - len * 0.35, py, len * 0.55, r * 0.16 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
     this.drawSprite(ctx, sprite, 0, 0, r * 4.2);
+
+    // === Per-frame reactor seam pulse + nav lights (drawn over sprite, before iframes) ===
+    if (!this.fastRender && runtime.status !== 'downed') {
+      const r2 = r;   // sprite is drawn at scale r * 4.2; sprite uses unit = size/64 → r*4.2/64 ≈ same as r/15.2
+      // Sprite-internal scale: the buildPlayer code uses r = 14 * unit where size=128, so unit=2; r_internal = 28.
+      // We're drawing the sprite at world-space r*4.2 wide, so 1 internal unit ≈ r*4.2/128 = r/30.5.
+      // For nav-light positioning we re-derive in world space at scale ~r:
+      const baseR = r2;
+
+      // Reactor seam pulse — bright cyan bar along the hull center
+      const seamPulse = 0.55 + Math.sin(t * 6) * 0.3 + Math.sin(t * 13) * 0.15;
+      ctx.save();
+      if (this.glowScale > 0) {
+        ctx.shadowColor = '#7ee8ff';
+        ctx.shadowBlur = 10 * this.glowScale * seamPulse;
+      }
+      const seamGrad = ctx.createLinearGradient(-baseR * 0.6, 0, baseR * 1.0, 0);
+      seamGrad.addColorStop(0, 'rgba(125,232,255,0)');
+      seamGrad.addColorStop(0.5, `rgba(170,240,255,${0.85 * seamPulse})`);
+      seamGrad.addColorStop(1, 'rgba(125,232,255,0)');
+      ctx.fillStyle = seamGrad;
+      ctx.fillRect(-baseR * 0.6, -baseR * 0.045, baseR * 1.6, baseR * 0.09);
+      ctx.restore();
+
+      // Wing-tip navigation lights — port (left = -y after rotation 0 = +y in sprite coords... wait)
+      // The sprite is drawn rotated by facingAngle. The wing-tip baked dots are at sprite coords
+      // (-r_internal * 0.55, ±r_internal * 1.02) which in our world-scale becomes roughly
+      // (-baseR * 0.6, ±baseR * 1.12) given the 4.2x sprite scaling.
+      const navX = -baseR * 0.6;
+      const navY = baseR * 1.12;
+      // Port light (sprite coord +y → starboard in standard convention; we use -y for port red here)
+      const portBlink = 0.35 + 0.65 * Math.max(0, Math.sin(t * 3.2));
+      const stbdBlink = 0.35 + 0.65 * Math.max(0, Math.sin(t * 3.2 + Math.PI));
+      ctx.save();
+      if (this.glowScale > 0) {
+        ctx.shadowBlur = 14 * this.glowScale * portBlink;
+        ctx.shadowColor = '#ff5b6e';
+      }
+      ctx.fillStyle = `rgba(255,120,140,${portBlink})`;
+      ctx.beginPath();
+      ctx.arc(navX, -navY, baseR * 0.085, 0, Math.PI * 2);
+      ctx.fill();
+      if (this.glowScale > 0) {
+        ctx.shadowBlur = 14 * this.glowScale * stbdBlink;
+        ctx.shadowColor = '#5eff9c';
+      }
+      ctx.fillStyle = `rgba(110,255,160,${stbdBlink})`;
+      ctx.beginPath();
+      ctx.arc(navX, navY, baseR * 0.085, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Nose strobe (white, slow blink)
+      const nose = 0.4 + 0.6 * Math.max(0, Math.sin(t * 1.6));
+      ctx.save();
+      if (this.glowScale > 0) {
+        ctx.shadowBlur = 12 * this.glowScale * nose;
+        ctx.shadowColor = '#ffffff';
+      }
+      ctx.fillStyle = `rgba(255,255,255,${nose * 0.9})`;
+      ctx.beginPath();
+      ctx.arc(baseR * 1.15, 0, baseR * 0.07, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
 
     // Invulnerability shimmer rings
     if (iframes) {

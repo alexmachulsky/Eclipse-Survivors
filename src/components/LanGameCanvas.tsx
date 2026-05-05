@@ -10,8 +10,58 @@ import {
   summary,
   type PerfSummary
 } from '../game/perf';
-import type { MultiplayerGameState, PlayerCommand, Vector } from '../game/types';
+import type { MultiplayerGameState, PlayerCommand, Projectile, Vector } from '../game/types';
 import { clamp } from '../game/collisions';
+
+interface TimedSnapshot {
+  state: MultiplayerGameState;
+  t: number; // performance.now() at receipt
+}
+
+function lerpV(ax: number, ay: number, bx: number, by: number, t: number): { x: number; y: number } {
+  return { x: ax + (bx - ax) * t, y: ay + (by - ay) * t };
+}
+
+function interpProjectiles(prev: Projectile[], curr: Projectile[], t: number, extraDt: number): Projectile[] {
+  const prevMap = new Map(prev.map(p => [p.id, p]));
+  return curr.map(p => {
+    const prevP = prevMap.get(p.id);
+    const base = prevP ? lerpV(prevP.position.x, prevP.position.y, p.position.x, p.position.y, t) : p.position;
+    return { ...p, position: { x: base.x + p.velocity.x * extraDt, y: base.y + p.velocity.y * extraDt } };
+  });
+}
+
+// Interpolate (and lightly extrapolate) between two server snapshots.
+// alpha = elapsed / snapshotInterval — 0..1 interpolates, >1 extrapolates.
+function interpolateState(prev: MultiplayerGameState, curr: MultiplayerGameState, alpha: number, snapshotMs: number): MultiplayerGameState {
+  const t = Math.min(alpha, 1);
+  // Cap extrapolation so a missed snapshot doesn't fling entities across the map.
+  const extraDt = Math.min(Math.max(alpha - 1, 0), 1.5) * (snapshotMs / 1000);
+
+  const prevPlayerMap = new Map(prev.players.map(p => [p.id, p]));
+  const prevEnemyMap = new Map(prev.enemies.map(e => [e.id, e]));
+
+  const players = curr.players.map(runtime => {
+    const prevR = prevPlayerMap.get(runtime.id);
+    if (!prevR) return runtime;
+    const pos = lerpV(prevR.player.position.x, prevR.player.position.y, runtime.player.position.x, runtime.player.position.y, t);
+    return { ...runtime, player: { ...runtime.player, position: pos } };
+  });
+
+  const enemies = curr.enemies.map(e => {
+    const prevE = prevEnemyMap.get(e.id);
+    const base = prevE ? lerpV(prevE.position.x, prevE.position.y, e.position.x, e.position.y, t) : e.position;
+    return { ...e, position: { x: base.x + e.velocity.x * extraDt, y: base.y + e.velocity.y * extraDt } };
+  });
+
+  return {
+    ...curr,
+    players,
+    enemies,
+    playerProjectiles: interpProjectiles(prev.playerProjectiles, curr.playerProjectiles, t, extraDt),
+    enemyProjectiles: interpProjectiles(prev.enemyProjectiles, curr.enemyProjectiles, t, extraDt),
+  };
+}
 
 interface LanGameCanvasProps {
   state: MultiplayerGameState | null;
@@ -61,7 +111,9 @@ function screenToWorld(state: MultiplayerGameState, localPlayerId: string, viewS
 export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
-  const latestStateRef = useRef<MultiplayerGameState | null>(state);
+  const prevSnapshotRef = useRef<TimedSnapshot | null>(null);
+  const currSnapshotRef = useRef<TimedSnapshot | null>(null);
+  const snapshotIntervalRef = useRef(50); // ms, exponential moving average
   const localPlayerIdRef = useRef<string | null>(localPlayerId);
   const keysRef = useRef({
     moveUp: false,
@@ -73,12 +125,25 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
   const mouseRef = useRef<Vector>({ x: 0, y: 0 });
   const viewSizeRef = useRef({ width: 1280, height: 720 });
   const seqRef = useRef(0);
+  const cmdTimerRef = useRef(0); // seconds since last command sent
+  const lastSentKeysRef = useRef({ moveUp: false, moveDown: false, moveLeft: false, moveRight: false, reviveHeld: false });
+  // Client-side prediction: locally simulate the local player's position so it
+  // responds instantly to input instead of waiting for a server round-trip.
+  const predictedPosRef = useRef<Vector | null>(null);
   const debugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [fastMode, setFastMode] = useState(false);
 
   useEffect(() => {
-    latestStateRef.current = state;
+    if (!state) return;
+    const now = performance.now();
+    if (currSnapshotRef.current) {
+      const gap = now - currSnapshotRef.current.t;
+      // Exponential moving average to track server snapshot cadence.
+      snapshotIntervalRef.current = snapshotIntervalRef.current * 0.85 + gap * 0.15;
+      prevSnapshotRef.current = currSnapshotRef.current;
+    }
+    currSnapshotRef.current = { state, t: now };
   }, [state]);
 
   useEffect(() => {
@@ -121,31 +186,104 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
     engine.preloadRenderAssets();
 
     const loop = (time: number) => {
-      const dt = (time - lastTime) / 1000;
+      const dt = Math.min((time - lastTime) / 1000, 0.05);
       beginFrame(lastTime);
       lastTime = time;
       beginUpdate();
       endUpdate();
 
-      const currentState = latestStateRef.current;
+      const curr = currSnapshotRef.current;
+      const prev = prevSnapshotRef.current;
       const currentPlayerId = localPlayerIdRef.current;
 
-      if (currentState && currentPlayerId) {
-        const aim = screenToWorld(currentState, currentPlayerId, viewSizeRef.current, mouseRef.current);
-        sendCommand({
-          type: 'command',
-          playerId: currentPlayerId,
-          seq: seqRef.current,
-          moveUp: keysRef.current.moveUp,
-          moveDown: keysRef.current.moveDown,
-          moveLeft: keysRef.current.moveLeft,
-          moveRight: keysRef.current.moveRight,
-          aimWorldX: aim.x,
-          aimWorldY: aim.y,
-          reviveHeld: keysRef.current.reviveHeld
-        });
-        seqRef.current += 1;
-        engine.loadMultiplayerState(currentState, currentPlayerId);
+      if (curr && currentPlayerId) {
+        // Interpolate/extrapolate between the two most recent server snapshots
+        // so entities move smoothly at 60 fps instead of teleporting at 30 Hz.
+        const elapsed = performance.now() - curr.t;
+        const interval = snapshotIntervalRef.current;
+        const alpha = elapsed / interval;
+        const displayState = prev
+          ? interpolateState(prev.state, curr.state, alpha, interval)
+          : curr.state;
+
+        // === Client-side prediction for the local player ===
+        // Move the local player based on input immediately, instead of waiting
+        // for the server snapshot to come back. The server remains authoritative
+        // — when its position diverges, we smoothly blend predicted -> server.
+        const localRuntime = curr.state.players.find((p) => p.id === currentPlayerId);
+        let finalState = displayState;
+        if (localRuntime && localRuntime.status === 'active') {
+          if (!predictedPosRef.current) {
+            predictedPosRef.current = { x: localRuntime.player.position.x, y: localRuntime.player.position.y };
+          }
+          const k = keysRef.current;
+          const dirX = (k.moveRight ? 1 : 0) - (k.moveLeft ? 1 : 0);
+          const dirY = (k.moveDown ? 1 : 0) - (k.moveUp ? 1 : 0);
+          const len = Math.hypot(dirX, dirY);
+          if (len > 0) {
+            const speed = localRuntime.player.speed;
+            const radius = localRuntime.player.radius;
+            const arena = curr.state.arena;
+            predictedPosRef.current.x = clamp(predictedPosRef.current.x + (dirX / len) * speed * dt, radius, arena.width - radius);
+            predictedPosRef.current.y = clamp(predictedPosRef.current.y + (dirY / len) * speed * dt, radius, arena.height - radius);
+          }
+          // Reconcile against server: snap on huge divergence (teleport, knockback),
+          // otherwise blend a small fraction toward server every frame.
+          const serverPos = localRuntime.player.position;
+          const dxc = serverPos.x - predictedPosRef.current.x;
+          const dyc = serverPos.y - predictedPosRef.current.y;
+          if (dxc * dxc + dyc * dyc > 120 * 120) {
+            predictedPosRef.current.x = serverPos.x;
+            predictedPosRef.current.y = serverPos.y;
+          } else {
+            predictedPosRef.current.x += dxc * 0.12;
+            predictedPosRef.current.y += dyc * 0.12;
+          }
+          // Override the local player's position in the rendered state.
+          const predicted = predictedPosRef.current;
+          finalState = {
+            ...displayState,
+            players: displayState.players.map((p) =>
+              p.id === currentPlayerId
+                ? { ...p, player: { ...p.player, position: { x: predicted.x, y: predicted.y } } }
+                : p
+            )
+          };
+        } else if (localRuntime && localRuntime.status !== 'active') {
+          // Reset prediction when down/dead so a respawn snaps to server.
+          predictedPosRef.current = null;
+        }
+
+        engine.loadMultiplayerState(finalState, currentPlayerId);
+
+        // Send input commands: immediately on input change, throttled to 30 Hz otherwise.
+        cmdTimerRef.current += dt;
+        const k2 = keysRef.current;
+        const lastK = lastSentKeysRef.current;
+        const inputChanged =
+          k2.moveUp !== lastK.moveUp ||
+          k2.moveDown !== lastK.moveDown ||
+          k2.moveLeft !== lastK.moveLeft ||
+          k2.moveRight !== lastK.moveRight ||
+          k2.reviveHeld !== lastK.reviveHeld;
+        if (inputChanged || cmdTimerRef.current >= 1 / 30) {
+          cmdTimerRef.current = 0;
+          lastSentKeysRef.current = { ...k2 };
+          const aim = screenToWorld(curr.state, currentPlayerId, viewSizeRef.current, mouseRef.current);
+          sendCommand({
+            type: 'command',
+            playerId: currentPlayerId,
+            seq: seqRef.current,
+            moveUp: k2.moveUp,
+            moveDown: k2.moveDown,
+            moveLeft: k2.moveLeft,
+            moveRight: k2.moveRight,
+            aimWorldX: aim.x,
+            aimWorldY: aim.y,
+            reviveHeld: k2.reviveHeld
+          });
+          seqRef.current += 1;
+        }
       }
 
       beginRender();
@@ -178,27 +316,29 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
     frameId = requestAnimationFrame(loop);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const isTyping = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
       const mapped = keyMap[event.code];
 
       if (mapped) {
         keysRef.current[mapped] = true;
-        event.preventDefault();
+        if (!isTyping) event.preventDefault();
       }
 
-      if (event.code === 'KeyE') {
+      if (event.code === 'KeyE' && !isTyping) {
         keysRef.current.reviveHeld = true;
       }
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
+      const isTyping = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
       const mapped = keyMap[event.code];
 
       if (mapped) {
         keysRef.current[mapped] = false;
-        event.preventDefault();
+        if (!isTyping) event.preventDefault();
       }
 
-      if (event.code === 'KeyE') {
+      if (event.code === 'KeyE' && !isTyping) {
         keysRef.current.reviveHeld = false;
       }
     };

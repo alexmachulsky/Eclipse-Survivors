@@ -114,132 +114,251 @@ function shadowBlob(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCont
 function buildPlayer(hit = false): SpriteAsset {
   return createSprite(128, (ctx, unit) => {
     const r = 14 * unit;
-    const teal = hit ? 'rgba(255,255,255,0.9)' : '#5eead4';
+    const accent = hit ? '#e2e8f0' : '#7cf7ff';
+    const hullDeep = hit ? '#1f2937' : '#070d1c';
+    const hullMid = hit ? '#4b5563' : '#1a2f5a';
+    const hullEdge = hit ? '#6b7280' : '#3a6dbe';
 
-    // Ground shadow
-    shadowBlob(ctx, r * 1.1, r * 0.3, r * 0.85);
+    // Ground shadow — slightly offset behind to give a sense of altitude
+    shadowBlob(ctx, r * 1.15, r * 0.28, r * 0.85);
 
-    // Ambient aura
-    radial(ctx, r * 0.2, r * 2.2,
-      hit ? 'rgba(255,255,255,0.28)' : 'rgba(94,234,212,0.36)',
-      'rgba(94,234,212,0)');
+    // === Ambient hover aura ===
+    radial(ctx, r * 0.1, r * 1.95,
+      hit ? 'rgba(255,255,255,0.16)' : 'rgba(80,140,255,0.22)',
+      'rgba(40,80,200,0)');
 
-    // === Boots / legs (two dark ovals at the back) ===
-    ctx.fillStyle = hit ? '#4a5568' : '#1a2535';
-    for (const s of [-1, 1]) {
-      ctx.save();
-      ctx.rotate(s * 0.22);
+    // === Swept delta wings (more aggressive sweep, sharper tips) ===
+    for (const sign of [-1, 1] as const) {
+      const wingGrad = ctx.createLinearGradient(0, sign * r * 0.1, 0, sign * r * 1.0);
+      wingGrad.addColorStop(0, hullMid);
+      wingGrad.addColorStop(0.55, hullDeep);
+      wingGrad.addColorStop(1, hit ? '#0f172a' : '#03070f');
+      ctx.fillStyle = wingGrad;
+      ctx.strokeStyle = hit ? 'rgba(200,210,255,0.6)' : 'rgba(120,200,255,0.55)';
+      ctx.lineWidth = 0.85 * unit;
       ctx.beginPath();
-      ctx.ellipse(-r * 0.38, s * r * 0.33, 4 * unit, 6 * unit, 0, 0, Math.PI * 2);
+      ctx.moveTo(r * 0.42, sign * r * 0.16);          // forward wing root
+      ctx.lineTo(r * 0.05, sign * r * 0.24);          // inner edge
+      ctx.lineTo(-r * 0.55, sign * r * 1.02);         // sharp wing tip (further back)
+      ctx.lineTo(-r * 0.18, sign * r * 0.92);         // trailing inner
+      ctx.lineTo(-r * 0.05, sign * r * 0.62);         // trailing root
+      ctx.closePath();
       ctx.fill();
-      ctx.restore();
+      ctx.stroke();
+
+      // Wing accent stripe (cyan)
+      ctx.strokeStyle = hit ? 'rgba(255,255,255,0.3)' : 'rgba(125,230,255,0.55)';
+      ctx.lineWidth = 0.7 * unit;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.25, sign * r * 0.28);
+      ctx.lineTo(-r * 0.45, sign * r * 0.88);
+      ctx.stroke();
+
+      // Secondary panel line
+      ctx.strokeStyle = hit ? 'rgba(255,255,255,0.12)' : 'rgba(120,200,255,0.22)';
+      ctx.lineWidth = 0.5 * unit;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.05, sign * r * 0.4);
+      ctx.lineTo(-r * 0.32, sign * r * 0.78);
+      ctx.stroke();
     }
 
-    // === Backpack (small bump behind torso) ===
-    const packGrad = ctx.createRadialGradient(-r * 0.5, 0, 0, -r * 0.5, 0, 5.5 * unit);
-    packGrad.addColorStop(0, hit ? '#374151' : '#2d3d1e');
-    packGrad.addColorStop(1, hit ? '#1f2937' : '#1a2412');
-    ctx.fillStyle = packGrad;
-    ctx.beginPath();
-    ctx.ellipse(-r * 0.5, 0, 5.5 * unit, 4 * unit, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // === Wing-mounted weapon hardpoints ===
+    for (const sign of [-1, 1] as const) {
+      const hpX = -r * 0.05;
+      const hpY = sign * r * 0.55;
+      // Pylon
+      ctx.fillStyle = hit ? '#6b7280' : '#1a2f5a';
+      ctx.strokeStyle = hit ? '#9ca3af' : '#3a6dbe';
+      ctx.lineWidth = 0.5 * unit;
+      ctx.beginPath();
+      ctx.rect(hpX - r * 0.05, hpY - r * 0.04, r * 0.5, r * 0.08);
+      ctx.fill();
+      ctx.stroke();
+      // Cannon barrel
+      ctx.fillStyle = hit ? '#374151' : '#050a14';
+      ctx.beginPath();
+      ctx.rect(hpX + r * 0.18, hpY - r * 0.025, r * 0.55, r * 0.05);
+      ctx.fill();
+      // Barrel tip glow
+      ctx.fillStyle = hit ? 'rgba(255,255,255,0.7)' : accent;
+      ctx.beginPath();
+      ctx.arc(hpX + r * 0.74, hpY, r * 0.045, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
-    // === Survival vest / torso ===
-    const vestGrad = ctx.createLinearGradient(-r * 0.52, -r * 0.42, r * 0.52, r * 0.42);
-    vestGrad.addColorStop(0, hit ? '#6b7280' : '#3d5a26');
-    vestGrad.addColorStop(0.45, hit ? '#9ca3af' : '#4e722e');
-    vestGrad.addColorStop(1, hit ? '#6b7280' : '#3d5a26');
-    ctx.fillStyle = vestGrad;
-    ctx.strokeStyle = teal;
-    ctx.lineWidth = 1.6 * unit;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 0.54, r * 0.42, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    // === Wing-tip nav lights (positions; brightness animated per frame) ===
+    // Port (left, sign=-1) usually red, starboard (right, sign=+1) usually green.
+    // We bake a faint base disc here; the bright pulsing dot is drawn per-frame.
+    for (const [sign, color] of [[-1, hit ? '#fecaca' : '#ff5b6e'], [1, hit ? '#bbf7d0' : '#5eff9c']] as const) {
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.arc(-r * 0.55, sign * r * 1.02, r * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
-    // Vest chest strap detail
-    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.2)' : 'rgba(94,234,212,0.28)';
-    ctx.lineWidth = 0.9 * unit;
+    // === Main hull body (sharper nose, narrower waist) ===
+    const hullGrad = ctx.createLinearGradient(-r * 0.7, 0, r * 1.05, 0);
+    hullGrad.addColorStop(0, hullDeep);
+    hullGrad.addColorStop(0.25, hullMid);
+    hullGrad.addColorStop(0.6, hullEdge);
+    hullGrad.addColorStop(0.85, hullMid);
+    hullGrad.addColorStop(1, hullDeep);
+    ctx.fillStyle = hullGrad;
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.15 * unit;
     ctx.beginPath();
-    ctx.moveTo(-r * 0.08, -r * 0.26);
-    ctx.lineTo(r * 0.3, 0);
-    ctx.lineTo(-r * 0.08, r * 0.26);
-    ctx.stroke();
-
-    // === Weapon arm (skin, extends forward-right) ===
-    ctx.fillStyle = hit ? '#e2b48a' : '#b87044';
-    ctx.beginPath();
-    ctx.ellipse(r * 0.46, r * 0.2, 4 * unit, 3 * unit, -0.45, 0, Math.PI * 2);
-    ctx.fill();
-
-    // === Gun barrel (pointing right = forward) ===
-    ctx.fillStyle = hit ? '#9ca3af' : '#202020';
-    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.45)' : '#4a4a4a';
-    ctx.lineWidth = 0.8 * unit;
-    // receiver / body
-    ctx.beginPath();
-    ctx.rect(r * 0.42, -2 * unit, r * 0.78, 4 * unit);
-    ctx.fill();
-    ctx.stroke();
-    // grip
-    ctx.beginPath();
-    ctx.rect(r * 0.48, 2 * unit, r * 0.13, 4.5 * unit);
-    ctx.fill();
-
-    // Muzzle flash glow
-    const muzzle = ctx.createRadialGradient(r * 1.2, 0, 0, r * 1.2, 0, 5 * unit);
-    muzzle.addColorStop(0, hit ? 'rgba(255,255,255,0.95)' : 'rgba(255,215,70,0.95)');
-    muzzle.addColorStop(0.5, hit ? 'rgba(255,255,255,0.3)' : 'rgba(255,160,30,0.35)');
-    muzzle.addColorStop(1, 'rgba(255,160,30,0)');
-    ctx.fillStyle = muzzle;
-    ctx.beginPath();
-    ctx.arc(r * 1.2, 0, 5 * unit, 0, Math.PI * 2);
-    ctx.fill();
-
-    // === Head ===
-    const headX = r * 0.28;
-    const headR = r * 0.37;
-    const headFill = ctx.createRadialGradient(headX - headR * 0.3, -headR * 0.2, 0, headX, 0, headR);
-    headFill.addColorStop(0, hit ? '#ffffff' : '#dea86c');
-    headFill.addColorStop(1, hit ? '#cbd5e1' : '#b06838');
-    ctx.fillStyle = headFill;
-    ctx.strokeStyle = teal;
-    ctx.lineWidth = 1.5 * unit;
-    ctx.beginPath();
-    ctx.arc(headX, 0, headR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // Tactical helmet (back-half arc)
-    const helmetGrad = ctx.createLinearGradient(headX - headR, 0, headX + headR * 0.2, 0);
-    helmetGrad.addColorStop(0, hit ? '#374151' : '#1c2e12');
-    helmetGrad.addColorStop(1, hit ? '#4b5563' : '#2d4820');
-    ctx.fillStyle = helmetGrad;
-    ctx.strokeStyle = hit ? '#6b7280' : '#3a5828';
-    ctx.lineWidth = 0.9 * unit;
-    ctx.beginPath();
-    ctx.arc(headX, 0, headR, Math.PI * 0.55, Math.PI * 1.72);
-    ctx.lineTo(headX, 0);
+    ctx.moveTo(r * 1.05, 0);                   // sharp nose tip
+    ctx.lineTo(r * 0.7, -r * 0.18);
+    ctx.lineTo(r * 0.2, -r * 0.32);
+    ctx.lineTo(-r * 0.42, -r * 0.3);
+    ctx.lineTo(-r * 0.7, -r * 0.16);
+    ctx.lineTo(-r * 0.78, 0);
+    ctx.lineTo(-r * 0.7, r * 0.16);
+    ctx.lineTo(-r * 0.42, r * 0.3);
+    ctx.lineTo(r * 0.2, r * 0.32);
+    ctx.lineTo(r * 0.7, r * 0.18);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Helmet brim stripe
-    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.25)' : 'rgba(94,234,212,0.3)';
-    ctx.lineWidth = 0.8 * unit;
+    // Inner specular highlight on hull top edge
+    const specGrad = ctx.createLinearGradient(0, -r * 0.32, 0, 0);
+    specGrad.addColorStop(0, hit ? 'rgba(255,255,255,0.45)' : 'rgba(160,220,255,0.4)');
+    specGrad.addColorStop(1, 'rgba(160,220,255,0)');
+    ctx.fillStyle = specGrad;
     ctx.beginPath();
-    ctx.arc(headX, 0, headR + 1.2 * unit, Math.PI * 0.6, Math.PI * 1.65);
+    ctx.moveTo(r * 0.95, -r * 0.04);
+    ctx.lineTo(r * 0.65, -r * 0.16);
+    ctx.lineTo(r * 0.18, -r * 0.28);
+    ctx.lineTo(-r * 0.4, -r * 0.26);
+    ctx.lineTo(-r * 0.55, -r * 0.06);
+    ctx.lineTo(-r * 0.4, -r * 0.12);
+    ctx.lineTo(r * 0.18, -r * 0.18);
+    ctx.lineTo(r * 0.65, -r * 0.08);
+    ctx.lineTo(r * 0.95, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // === Reactor seam (down center spine — base layer; bright pulse drawn per-frame) ===
+    const seamGrad = ctx.createLinearGradient(-r * 0.55, 0, r * 0.85, 0);
+    seamGrad.addColorStop(0, hit ? 'rgba(255,255,255,0.0)' : 'rgba(125,230,255,0)');
+    seamGrad.addColorStop(0.3, hit ? 'rgba(255,255,255,0.5)' : 'rgba(125,230,255,0.7)');
+    seamGrad.addColorStop(0.7, hit ? 'rgba(255,255,255,0.6)' : 'rgba(180,240,255,0.85)');
+    seamGrad.addColorStop(1, hit ? 'rgba(255,255,255,0.0)' : 'rgba(125,230,255,0)');
+    ctx.fillStyle = seamGrad;
+    ctx.beginPath();
+    ctx.rect(-r * 0.55, -r * 0.025, r * 1.4, r * 0.05);
+    ctx.fill();
+
+    // === Hull panel lines ===
+    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.16)' : 'rgba(120,200,255,0.28)';
+    ctx.lineWidth = 0.6 * unit;
+    for (const sign of [-1, 1] as const) {
+      ctx.beginPath();
+      ctx.moveTo(r * 0.6, sign * r * 0.06);
+      ctx.lineTo(-r * 0.5, sign * r * 0.18);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(r * 0.45, sign * r * 0.18);
+      ctx.lineTo(r * 0.05, sign * r * 0.26);
+      ctx.stroke();
+    }
+
+    // Three rivet dots on each side (just decoration)
+    ctx.fillStyle = hit ? 'rgba(255,255,255,0.4)' : 'rgba(120,200,255,0.5)';
+    for (const sign of [-1, 1] as const) {
+      for (let i = 0; i < 3; i += 1) {
+        const rx = r * 0.4 - i * r * 0.32;
+        ctx.beginPath();
+        ctx.arc(rx, sign * r * 0.22, r * 0.018, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // === Cockpit canopy (faceted glass — 3 segments) ===
+    const cpX = r * 0.36;
+    const cpRx = r * 0.32;
+    const cpRy = r * 0.2;
+
+    // Canopy frame (slightly larger than glass)
+    ctx.fillStyle = hit ? '#374151' : '#08152a';
+    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.4)' : 'rgba(125,230,255,0.5)';
+    ctx.lineWidth = 0.75 * unit;
+    ctx.beginPath();
+    ctx.ellipse(cpX, 0, cpRx + 0.04 * r, cpRy + 0.04 * r, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.stroke();
 
-    // Eye / visor glow
-    const eyeX = headX + headR * 0.58;
-    const eyeGrad = ctx.createRadialGradient(eyeX, r * 0.07, 0, eyeX, r * 0.07, 3.5 * unit);
-    eyeGrad.addColorStop(0, hit ? '#ffffff' : '#ffe070');
-    eyeGrad.addColorStop(0.6, hit ? 'rgba(255,255,255,0.4)' : 'rgba(255,224,112,0.4)');
-    eyeGrad.addColorStop(1, 'rgba(255,224,112,0)');
-    ctx.fillStyle = eyeGrad;
+    // Canopy glass (deep blue with cyan rim)
+    const cpGrad = ctx.createRadialGradient(cpX - cpRx * 0.25, -cpRy * 0.3, 0, cpX, 0, cpRx);
+    cpGrad.addColorStop(0, hit ? '#ffffff' : '#a0e6ff');
+    cpGrad.addColorStop(0.5, hit ? '#94a3b8' : '#1a6fa6');
+    cpGrad.addColorStop(1, hit ? '#374151' : '#020a18');
+    ctx.fillStyle = cpGrad;
     ctx.beginPath();
-    ctx.arc(eyeX, r * 0.07, 3.5 * unit, 0, Math.PI * 2);
+    ctx.ellipse(cpX, 0, cpRx, cpRy, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Canopy frame ribs (vertical lines giving the glass a faceted look)
+    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.5)' : 'rgba(125,230,255,0.65)';
+    ctx.lineWidth = 0.6 * unit;
+    for (const offset of [-0.55, 0, 0.55]) {
+      const ribX = cpX + cpRx * offset * 0.7;
+      const ribH = cpRy * Math.sqrt(Math.max(0, 1 - (offset * 0.7) ** 2));
+      ctx.beginPath();
+      ctx.moveTo(ribX, -ribH);
+      ctx.lineTo(ribX, ribH);
+      ctx.stroke();
+    }
+
+    // Cockpit glare highlight
+    ctx.fillStyle = hit ? 'rgba(255,255,255,0.6)' : 'rgba(220,245,255,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(cpX - cpRx * 0.22, -cpRy * 0.42, cpRx * 0.32, cpRy * 0.24, -0.45, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === Main engine nozzles (rear; flicker drawn per-frame) ===
+    for (const sign of [-1, 1] as const) {
+      const ex = -r * 0.72;
+      const ey = sign * r * 0.16;
+      // Nozzle ring
+      ctx.fillStyle = hit ? '#111827' : '#020714';
+      ctx.strokeStyle = hit ? '#6b7280' : '#3a6dbe';
+      ctx.lineWidth = 0.85 * unit;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, r * 0.12, r * 0.11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Inner core (constant base glow; per-frame layer adds throb)
+      const ng = ctx.createRadialGradient(ex, ey, 0, ex, ey, r * 0.16);
+      ng.addColorStop(0, hit ? 'rgba(255,255,255,0.95)' : 'rgba(160,220,255,0.95)');
+      ng.addColorStop(0.55, hit ? 'rgba(200,220,255,0.5)' : 'rgba(80,160,255,0.55)');
+      ng.addColorStop(1, 'rgba(40,80,200,0)');
+      ctx.fillStyle = ng;
+      ctx.beginPath();
+      ctx.arc(ex, ey, r * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // === Center-rear thruster (third engine, bigger) ===
+    const cex = -r * 0.78;
+    ctx.fillStyle = hit ? '#111827' : '#020714';
+    ctx.strokeStyle = hit ? '#9ca3af' : accent;
+    ctx.lineWidth = 0.9 * unit;
+    ctx.beginPath();
+    ctx.ellipse(cex, 0, r * 0.14, r * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    const ceg = ctx.createRadialGradient(cex, 0, 0, cex, 0, r * 0.18);
+    ceg.addColorStop(0, hit ? 'rgba(255,255,255,1)' : 'rgba(180,235,255,1)');
+    ceg.addColorStop(0.5, hit ? 'rgba(200,220,255,0.6)' : 'rgba(100,180,255,0.65)');
+    ceg.addColorStop(1, 'rgba(40,80,200,0)');
+    ctx.fillStyle = ceg;
+    ctx.beginPath();
+    ctx.arc(cex, 0, r * 0.18, 0, Math.PI * 2);
     ctx.fill();
   });
 }
