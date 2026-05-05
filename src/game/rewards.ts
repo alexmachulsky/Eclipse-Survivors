@@ -1,4 +1,5 @@
 import { EVOLUTIONS, PASSIVES, RARE_STAT_UPGRADES, STAT_UPGRADES } from './content';
+import { PASSIVES as PASSIVE_REGISTRY } from './content/passives.registry';
 import type { EvolutionId, Player, UpgradeOption, Weapon } from './types';
 
 function pickOne<T>(items: T[], rng: () => number): T | undefined {
@@ -198,20 +199,11 @@ export function applyUpgrade(player: Player, weapons: Weapon[], upgrade: Upgrade
   }
 
   if (upgrade.kind === 'passive' && upgrade.passiveId) {
+    const def = PASSIVE_REGISTRY[upgrade.passiveId];
+    if (!def) return { player, weapons };
     const level = (player.passives[upgrade.passiveId] ?? 0) + 1;
     const passives = { ...player.passives, [upgrade.passiveId]: level };
-    let nextPlayer: Player = { ...player, passives };
-
-    if (upgrade.passiveId === 'cooldown-sigil') {
-      nextPlayer = { ...nextPlayer, attackRateMultiplier: nextPlayer.attackRateMultiplier * 1.08 };
-    } else if (upgrade.passiveId === 'astral-lens') {
-      nextPlayer = { ...nextPlayer, pickupRadius: nextPlayer.pickupRadius + 20 };
-    } else if (upgrade.passiveId === 'void-core') {
-      nextPlayer = { ...nextPlayer, areaMultiplier: nextPlayer.areaMultiplier * 1.1 };
-    } else if (upgrade.passiveId === 'keen-fletching') {
-      nextPlayer = { ...nextPlayer, projectileSpeedMultiplier: nextPlayer.projectileSpeedMultiplier * 1.12 };
-    }
-
+    const nextPlayer = def.apply({ ...player, passives });
     return { player: nextPlayer, weapons };
   }
 

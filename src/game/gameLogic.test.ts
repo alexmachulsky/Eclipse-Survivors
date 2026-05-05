@@ -903,6 +903,26 @@ describe('weapons registry fire() round-trip', () => {
   });
 });
 
+import { PASSIVES as PASSIVES_REGISTRY } from './content/passives.registry';
+
+describe('passives registry', () => {
+  it('has identical metadata to the content.ts PASSIVES array', () => {
+    const ids = ['cooldown-sigil', 'astral-lens', 'void-core', 'keen-fletching'];
+    for (const id of ids) {
+      expect(PASSIVES_REGISTRY[id]).toBeDefined();
+      expect(PASSIVES_REGISTRY[id].maxLevel).toBe(5);
+    }
+  });
+
+  it('apply() reproduces existing passive effects', () => {
+    const p0 = createStartingPlayer({ x: 0, y: 0 });
+    expect(PASSIVES_REGISTRY['cooldown-sigil'].apply(p0).attackRateMultiplier).toBeCloseTo(p0.attackRateMultiplier * 1.08);
+    expect(PASSIVES_REGISTRY['astral-lens'].apply(p0).pickupRadius).toBe(p0.pickupRadius + 20);
+    expect(PASSIVES_REGISTRY['void-core'].apply(p0).areaMultiplier).toBeCloseTo(p0.areaMultiplier * 1.1);
+    expect(PASSIVES_REGISTRY['keen-fletching'].apply(p0).projectileSpeedMultiplier).toBeCloseTo(p0.projectileSpeedMultiplier * 1.12);
+  });
+});
+
 describe('weapons registry', () => {
   it('has an entry for every WeaponId used by createStartingWeapons', () => {
     const startingIds = createStartingWeapons().map((w) => w.id);
