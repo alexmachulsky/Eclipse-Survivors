@@ -7,6 +7,7 @@ import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import { preloadRenderAssets, type RenderAssets, type SpriteAsset } from './renderAssets';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
+import { calculateRunReward, loadWallet, saveWallet } from './wallet';
 import {
   collectRunDirectorEvents,
   createRiftObjective,
@@ -48,6 +49,7 @@ export interface GameSnapshot {
   agency: { rerolls: number; banishes: number; locks: number; maxRerolls: number; maxLocks: number };
   bannedUpgradeIds: string[];
   lockedSlot: number | null;
+  lastRunReward: number;
 }
 
 const MIN_SPAWN_INTERVAL = 0.26;
@@ -413,7 +415,8 @@ export class GameEngine {
       healthRatio: this.state.player.health / this.state.player.maxHealth,
       agency: { ...this.state.agency },
       bannedUpgradeIds: [...this.state.bannedUpgradeIds],
-      lockedSlot: this.state.lockedSlot
+      lockedSlot: this.state.lockedSlot,
+      lastRunReward: this.state.lastRunReward
     };
   }
 
@@ -891,6 +894,7 @@ export class GameEngine {
 
       if (enemy.type === 'boss') {
         this.state.phase = 'victory';
+        this.creditWallet(true);
       }
     }
 
@@ -1060,9 +1064,21 @@ export class GameEngine {
   }
 
   private checkEndStates(): void {
+    if (this.state.phase === 'gameOver' || this.state.phase === 'victory') return;
     if (this.state.player.health <= 0) {
       this.state.phase = 'gameOver';
+      this.creditWallet(false);
     }
+  }
+
+  private creditWallet(won: boolean): void {
+    const reward = calculateRunReward(this.state.stats, won);
+    this.state.lastRunReward = reward;
+    const wallet = loadWallet();
+    saveWallet({
+      shards: wallet.shards + reward,
+      lifetimeEarned: wallet.lifetimeEarned + reward,
+    });
   }
 
   private createDamageText(enemy: Enemy, amount: number, color: string): DamageText {

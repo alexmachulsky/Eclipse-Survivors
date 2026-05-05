@@ -114,6 +114,7 @@ export function createInitialGameState(): GameState {
     timeScale: 1,
     agency: { rerolls: 2, banishes: 1, locks: 1, maxRerolls: 2, maxLocks: 1 },
     bannedUpgradeIds: [],
-    lockedSlot: null
+    lockedSlot: null,
+    lastRunReward: 0
   };
 }

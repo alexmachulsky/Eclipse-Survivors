@@ -257,6 +257,7 @@ export interface GameState {
   agency: UpgradeAgency;         // remaining reroll/banish/lock for the current level-up screen
   bannedUpgradeIds: string[];    // banished upgrade ids — persist for the whole run
   lockedSlot: number | null;     // index of the card locked across rerolls (null = none)
+  lastRunReward: number;         // shards earned on the most recent game-end transition (0 until run ends)
 }
 
 export interface PlayerRuntime {
