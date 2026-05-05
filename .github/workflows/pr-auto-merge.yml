@@ -1,11 +1,11 @@
-name: PR Review & Auto-merge
+name: PR CI & Auto-merge
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -28,82 +28,10 @@ jobs:
       - name: Run tests
         run: npm test
 
-  codex-review:
-    name: Codex Review
-    runs-on: ubuntu-latest
-    # Only run on initial open; iteration commits skip review to save tokens.
-    # Requires OPENAI_API_KEY repo secret. Codex auto-reads AGENTS.md for
-    # repo-specific review guidelines — see "Review guidelines" section there.
-    if: github.event.action == 'opened'
-    permissions:
-      contents: read
-      pull-requests: write
-    outputs:
-      review: ${{ steps.codex.outputs.final-message }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run Codex review
-        id: codex
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt: |
-            You are reviewing pull request #${{ github.event.pull_request.number }}
-            on the Eclipse Survivors repository.
-
-            Base ref: ${{ github.event.pull_request.base.sha }}
-            Head ref: ${{ github.event.pull_request.head.sha }}
-
-            Read AGENTS.md and CLAUDE.md for project conventions, the
-            engine/React split rules, and the performance hot-path rules
-            (use *Sq math, no allocations in update loops, glow scaling).
-
-            Review the diff between the base and head refs. Focus on:
-            - Correctness bugs (logic errors, off-by-one, missing null checks).
-            - Violations of the engine/React split (no canvas in update,
-              no mutation in render, no Math.random in update).
-            - Performance regressions in the game loop.
-            - Type-safety holes.
-            - Test coverage gaps for new logic.
-
-            Skip: stylistic nitpicks, formatting, comment polish.
-
-            Output a concise review in markdown. Lead with a one-sentence
-            verdict (LGTM / minor issues / blocking). Then list each issue
-            as `- **<file>:<line>** — <what & why>`. End with "No further
-            comments." if you find nothing actionable.
-
-  post-codex-review:
-    name: Post Codex Review
-    runs-on: ubuntu-latest
-    needs: codex-review
-    if: needs.codex-review.outputs.review != ''
-    permissions:
-      pull-requests: write
-    steps:
-      - uses: actions/github-script@v7
-        env:
-          REVIEW_BODY: ${{ needs.codex-review.outputs.review }}
-        with:
-          script: |
-            const body = `## 🤖 Codex Review\n\n${process.env.REVIEW_BODY}`;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body,
-            });
-
   auto-merge:
     name: Enable Auto-merge
     runs-on: ubuntu-latest
     needs: ci
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
       - uses: actions/github-script@v7
         with:
@@ -124,3 +52,15 @@ jobs:
             --repo ${{ github.repository }} \
             --auto \
             --squash
+
+# Code review is intentionally not in CI.
+# Run Codex locally against your ChatGPT plan before pushing:
+#
+#   codex exec "Review my current branch against main. Read AGENTS.md
+#   and CLAUDE.md for project conventions. Focus on correctness,
+#   engine/React split violations, and perf hot-path rules. Skip
+#   stylistic nitpicks."
+#
+# The Codex CLI uses your ChatGPT plan when signed in via `codex login`,
+# avoiding per-token API charges. CI auto-review with plan auth is not
+# currently supported (the official codex-action requires an API key).
