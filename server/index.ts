@@ -97,7 +97,7 @@ function sanitizeName(name: unknown, fallback: string): string {
     return fallback;
   }
 
-  const cleaned = name.replace(/\s+/g, ' ').trim();
+  const cleaned = name.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
   return cleaned.slice(0, MAX_NAME_LENGTH) || fallback;
 }
 
@@ -106,7 +106,7 @@ function sanitizeRoomName(name: unknown, fallback: string): string {
     return fallback;
   }
 
-  const cleaned = name.replace(/\s+/g, ' ').trim();
+  const cleaned = name.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
   return cleaned.slice(0, MAX_ROOM_NAME_LENGTH) || fallback;
 }
 
