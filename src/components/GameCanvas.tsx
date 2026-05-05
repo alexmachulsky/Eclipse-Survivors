@@ -142,15 +142,16 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
     frameId = requestAnimationFrame(loop);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const isTyping = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
       const mapped = keyMap[event.code];
       const debug = import.meta.env.DEV && new URLSearchParams(window.location.search).has('debug');
 
       if (mapped) {
         engine.setMovement({ [mapped]: true });
-        event.preventDefault();
+        if (!isTyping) event.preventDefault();
       }
 
-      if (event.code === 'Escape') {
+      if (event.code === 'Escape' && !isTyping) {
         engine.togglePause();
         onSnapshot(engine.getSnapshot());
       }
@@ -166,11 +167,12 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
+      const isTyping = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
       const mapped = keyMap[event.code];
 
       if (mapped) {
         engine.setMovement({ [mapped]: false });
-        event.preventDefault();
+        if (!isTyping) event.preventDefault();
       }
     };
 

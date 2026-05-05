@@ -1,6 +1,6 @@
 import type { GameSnapshot } from '../game/GameEngine';
 import type { Weapon } from '../game/types';
-import { ClockIcon, HeartIcon, SkullIcon, StarIcon, WeaponIconMap } from './icons';
+import { ClockIcon, HeartIcon, SkullIcon, WeaponIconMap } from './icons';
 import { Tooltip } from './Tooltip';
 import { useState, useRef, useEffect } from 'react';
 
@@ -19,9 +19,11 @@ const PIP_COUNT = 8;
 
 export function WeaponTile({ weapon, isActive }: { weapon: Weapon; isActive: boolean }) {
   const Icon = WeaponIconMap[weapon.id];
+  const isMax = weapon.level >= PIP_COUNT;
   return (
-    <div className={`weapon-tile${weapon.level > 1 ? ' weapon-tile--upgraded' : ''}${isActive ? ' weapon-tile--active' : ''}`}>
-      <Icon size={22} color={weapon.level > 1 ? 'var(--c-rare)' : 'var(--c-common)'} />
+    <div className={`weapon-tile${weapon.level > 1 ? ' weapon-tile--upgraded' : ''}${isActive ? ' weapon-tile--active' : ''}${isMax ? ' weapon-tile--max' : ''}`}>
+      {weapon.level > 1 && <span className="weapon-tile-level">{weapon.level}</span>}
+      <Icon size={24} color={weapon.level > 1 ? 'var(--c-rare)' : 'var(--c-common)'} />
       <div className="pip-row">
         {Array.from({ length: PIP_COUNT }, (_, i) => (
           <span key={i} className={`pip${i < weapon.level ? ' pip--filled' : ''}`} />
@@ -68,17 +70,34 @@ export function Hud({ snapshot, onPause }: HudProps) {
           {actBannerText}
         </div>
       )}
+
+      {snapshot.bossHealthRatio !== null && (
+        <div className="boss-banner">
+          <div className="boss-banner-label">
+            <SkullIcon size={14} color="var(--c-danger)" />
+            <span>Night Lich</span>
+          </div>
+          <div className="meter boss-health-meter" aria-label="Boss health">
+            <span style={{ width: `${snapshot.bossHealthRatio * 100}%` }} />
+            <strong>{Math.round(snapshot.bossHealthRatio * 100)}%</strong>
+          </div>
+        </div>
+      )}
+
       <div className="hud-top">
         <div className="hud-top-inner">
+          <Tooltip content={<><strong>Run Time</strong>Survive 12 minutes (720s) to defeat the eclipse.</>}>
+            <span className="hud-stat hud-stat--time">
+              <ClockIcon size={15} color="var(--c-common)" />
+              <strong>{formatTime(snapshot.elapsed)}</strong>
+            </span>
+          </Tooltip>
           <span className="hud-stat">
-            <ClockIcon size={14} color="var(--c-common)" />
-            <strong>{formatTime(snapshot.elapsed)}</strong>
-          </span>
-          <span className="hud-stat">
-            <SkullIcon size={14} color="#94a3b8" />
+            <SkullIcon size={15} color="#cbd5e1" />
             <strong>{snapshot.kills}</strong>
           </span>
-          <span className="hud-stat hud-stat--act">
+          <span className="hud-stat hud-stat--act" aria-label={`Phase: ${snapshot.actLabel}`}>
+            <span className="hud-act-dot" />
             <strong>{snapshot.actLabel}</strong>
           </span>
           {objective && (
@@ -92,7 +111,7 @@ export function Hud({ snapshot, onPause }: HudProps) {
                 className="curse-alert"
                 aria-label={`Curse stacks: ${snapshot.enemyCurseStacks}`}
                 style={{
-                  textShadow: `0 0 ${4 + snapshot.enemyCurseStacks * 3}px rgba(255,51,95,${Math.min(0.4 + snapshot.enemyCurseStacks * 0.12, 0.9)})`, // --c-danger
+                  textShadow: `0 0 ${4 + snapshot.enemyCurseStacks * 3}px rgba(255,51,95,${Math.min(0.4 + snapshot.enemyCurseStacks * 0.12, 0.9)})`,
                   letterSpacing: '2px'
                 }}
               >
@@ -104,8 +123,6 @@ export function Hud({ snapshot, onPause }: HudProps) {
             <span className={`boss-countdown-badge${snapshot.bossApproachingIn <= 10 ? ' boss-countdown-badge--urgent' : ''}`}>
               ⚠ BOSS IN {Math.ceil(snapshot.bossApproachingIn)}s
             </span>
-          ) : snapshot.bossSpawned ? (
-            <span className="boss-alert">Boss</span>
           ) : null}
           {snapshot.killStreak >= 3 && (
             <Tooltip content={<><strong>Kill Streak</strong>Consecutive kills within 3 seconds. Higher streaks show above the player.</>}>
@@ -117,48 +134,52 @@ export function Hud({ snapshot, onPause }: HudProps) {
         </div>
       </div>
 
+      <button className="icon-button hud-pause-button" type="button" aria-label="Pause" onClick={onPause}>
+        &#x23F8;
+      </button>
+
       <div className="hud-bottom">
-        <div className="hud-bars">
-          <div className="hud-bar-row">
-            <HeartIcon size={13} color="var(--c-danger)" />
-            <div className="meter health-meter" aria-label="Health">
-              <span className={getHealthBarClass()} style={{ width: `${healthRatio * 100}%` }} />
-              <strong>{Math.ceil(snapshot.health)}</strong>
-            </div>
+        <div className="player-frame">
+          <div className="player-frame-bars">
+            <Tooltip content={<><strong>Health</strong>{Math.ceil(snapshot.health)} / {Math.round(snapshot.maxHealth)} HP<br/>Pick up hearts to restore health.</>}>
+              <div className="hud-bar-row hud-bar-row--hp">
+                <HeartIcon size={15} color="var(--c-danger)" />
+                <div className="meter health-meter" aria-label="Health">
+                  <span className={getHealthBarClass()} style={{ width: `${healthRatio * 100}%` }} />
+                  <strong>
+                    <em>{Math.ceil(snapshot.health)}</em>
+                    <span className="meter-divider">/</span>
+                    <span className="meter-max">{Math.round(snapshot.maxHealth)}</span>
+                  </strong>
+                </div>
+              </div>
+            </Tooltip>
+            <Tooltip content={<><strong>Experience</strong>{snapshot.xp} / {snapshot.xpToNext} XP · Level {snapshot.level}<br/>Gain XP by killing enemies and completing rifts.</>}>
+              <div className="hud-bar-row hud-bar-row--xp">
+                <span className="level-chip" aria-label={`Level ${snapshot.level}`}>{snapshot.level}</span>
+                <div className="meter xp-meter" aria-label="Experience">
+                  <span style={{ width: `${xpRatio * 100}%` }} />
+                  <strong>
+                    <em>{snapshot.xp}</em>
+                    <span className="meter-divider">/</span>
+                    <span className="meter-max">{snapshot.xpToNext}</span>
+                    <span className="meter-suffix">XP</span>
+                  </strong>
+                </div>
+              </div>
+            </Tooltip>
           </div>
-          <Tooltip content={<><strong>Experience</strong>{snapshot.xp} / {snapshot.xpToNext} XP · Level {snapshot.level}<br/>Gain XP by killing enemies and completing rifts.</>}>
-            <div className="hud-bar-row">
-              <StarIcon size={13} color="var(--c-arcane)" />
-              <div className="meter xp-meter" aria-label="Experience">
-                <span style={{ width: `${xpRatio * 100}%` }} />
-                <strong>Lv {snapshot.level}</strong>
-              </div>
-            </div>
-          </Tooltip>
-          {snapshot.bossHealthRatio !== null && (
-            <div className="hud-bar-row">
-              <SkullIcon size={13} color="var(--c-danger)" />
-              <div className="meter boss-health-meter" aria-label="Boss health">
-                <span style={{ width: `${snapshot.bossHealthRatio * 100}%` }} />
-                <strong>Night Lich</strong>
-              </div>
+
+          {snapshot.weapons.length > 0 && (
+            <div className="hud-weapons-row">
+              {snapshot.weapons.map((weapon, idx) => (
+                <Tooltip key={weapon.id} content={<><strong>{weapon.name}</strong>Level {weapon.level} · {weapon.tags.join(', ')}<br/>Damage: {weapon.damage} · Rate: {weapon.fireRate.toFixed(1)}/s</>}>
+                  <WeaponTile weapon={weapon} isActive={idx === 0} />
+                </Tooltip>
+              ))}
             </div>
           )}
         </div>
-
-        {snapshot.weapons.length > 0 && (
-          <div className="hud-weapons-row">
-            {snapshot.weapons.map((weapon, idx) => (
-              <Tooltip key={weapon.id} content={<><strong>{weapon.name}</strong>Level {weapon.level} · {weapon.tags.join(', ')}<br/>Damage: {weapon.damage} · Rate: {weapon.fireRate.toFixed(1)}/s</>}>
-                <WeaponTile weapon={weapon} isActive={idx === 0} />
-              </Tooltip>
-            ))}
-          </div>
-        )}
-
-        <button className="icon-button" type="button" aria-label="Pause" onClick={onPause}>
-          &#x23F8;
-        </button>
       </div>
     </>
   );
