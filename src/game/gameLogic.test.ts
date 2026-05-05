@@ -905,6 +905,20 @@ describe('weapons registry fire() round-trip', () => {
 
 import { PASSIVES as PASSIVES_REGISTRY } from './content/passives.registry';
 import { EVOLUTIONS as EVOLUTIONS_REGISTRY } from './content/evolutions.registry';
+import { createInitialGameState } from './state';
+
+describe('upgrade agency state', () => {
+  it('initial GameState has 2 rerolls, 1 banish, 1 lock available', () => {
+    const s = createInitialGameState();
+    expect(s.agency.rerolls).toBe(2);
+    expect(s.agency.banishes).toBe(1);
+    expect(s.agency.locks).toBe(1);
+    expect(s.agency.maxRerolls).toBe(2);
+    expect(s.agency.maxLocks).toBe(1);
+    expect(s.bannedUpgradeIds).toEqual([]);
+    expect(s.lockedSlot).toBeNull();
+  });
+});
 
 describe('evolutions registry', () => {
   it('has all four evolutions with correct weapon/passive pairing', () => {

@@ -111,6 +111,9 @@ export function createInitialGameState(): GameState {
     weaponDamageDealt: {},
     upgradeHistory: [],
     cinematicState: null,
-    timeScale: 1
+    timeScale: 1,
+    agency: { rerolls: 2, banishes: 1, locks: 1, maxRerolls: 2, maxLocks: 1 },
+    bannedUpgradeIds: [],
+    lockedSlot: null
   };
 }

@@ -201,6 +201,14 @@ export interface RunDirectorState {
   bossSpawned: boolean;
 }
 
+export interface UpgradeAgency {
+  rerolls: number;
+  banishes: number;
+  locks: number;
+  maxRerolls: number;
+  maxLocks: number;
+}
+
 export type GamePhase = 'menu' | 'playing' | 'paused' | 'levelUp' | 'chestReward' | 'gameOver' | 'victory';
 export type PlayerStatus = 'active' | 'choosing' | 'downed' | 'disconnected';
 
@@ -246,6 +254,9 @@ export interface GameState {
   upgradeHistory: string[];      // ordered list of upgrade titles collected
   cinematicState: null | { type: 'boss-spawn'; timer: number };
   timeScale: number;             // 1.0 normally; set to 0.35 briefly on level-up for time-slow feel
+  agency: UpgradeAgency;         // remaining reroll/banish/lock for the current level-up screen
+  bannedUpgradeIds: string[];    // banished upgrade ids — persist for the whole run
+  lockedSlot: number | null;     // index of the card locked across rerolls (null = none)
 }
 
 export interface PlayerRuntime {
