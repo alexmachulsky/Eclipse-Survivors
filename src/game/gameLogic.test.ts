@@ -15,7 +15,7 @@ import { createStartingPlayer, createStartingWeapons } from './state';
 import { createAreaPulse, findNearestEnemy, fireWeaponAtTarget } from './weapons';
 import { resolveProjectileEnemyHit } from './projectiles';
 import { collectRunDirectorEvents, createRunDirectorState, getActLabel, getBossPhase, updateObjectiveProgress } from './runDirector';
-import type { Enemy, ObjectiveState, Projectile, Viewport, Weapon } from './types';
+import type { Enemy, ObjectiveState, Projectile, UpgradeOption, Viewport, Weapon } from './types';
 import { GameEngine } from './GameEngine';
 import { GameSim, findNearestActivePlayer } from './GameSim';
 import { beginFrame, beginRender, beginUpdate, endFrame, endRender, endUpdate, resetPerfForTests, summary } from './perf';
@@ -906,6 +906,42 @@ describe('weapons registry fire() round-trip', () => {
 import { PASSIVES as PASSIVES_REGISTRY } from './content/passives.registry';
 import { EVOLUTIONS as EVOLUTIONS_REGISTRY } from './content/evolutions.registry';
 import { createInitialGameState } from './state';
+
+describe('createUpgradeChoices banned + preserveCard', () => {
+  function makeRng(): () => number {
+    let s = 1;
+    return () => {
+      s = (s * 9301 + 49297) % 233280;
+      return s / 233280;
+    };
+  }
+
+  it('never returns a banned upgrade id', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapons = createStartingWeapons();
+    const banned = ['stat-damage'];
+    for (let i = 0; i < 20; i += 1) {
+      const choices = createUpgradeChoices(player, weapons, makeRng(), banned);
+      expect(choices.find((c) => c.id === 'stat-damage')).toBeUndefined();
+    }
+  });
+
+  it('preserves the supplied card at index 0 of the result', () => {
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const weapons = createStartingWeapons();
+    const preserve: UpgradeOption = {
+      id: 'stat-pickup-radius',
+      title: 'Gem Magnet',
+      description: '+28 pickup radius',
+      kind: 'stat',
+      stat: 'pickupRadius',
+      rarity: 'common',
+    };
+    const choices = createUpgradeChoices(player, weapons, makeRng(), [], preserve);
+    expect(choices[0].id).toBe('stat-pickup-radius');
+    expect(choices.length).toBeLessThanOrEqual(3);
+  });
+});
 
 describe('upgrade agency state', () => {
   it('initial GameState has 2 rerolls, 1 banish, 1 lock available', () => {

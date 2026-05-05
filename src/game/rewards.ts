@@ -80,7 +80,13 @@ function createEvolutionOption(evolutionId: string): UpgradeOption {
   };
 }
 
-export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () => number): UpgradeOption[] {
+export function createUpgradeChoices(
+  player: Player,
+  weapons: Weapon[],
+  rng: () => number,
+  bannedIds: string[] = [],
+  preserveCard?: UpgradeOption,
+): UpgradeOption[] {
   const statDeltaMap: Record<string, string> = {
     damage: '+18% damage',
     attackRate: '+14% attack speed',
@@ -91,18 +97,27 @@ export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () 
     projectileSpeed: '+18% proj. speed',
   };
 
-  const weaponChoices = createWeaponChoices(weapons);
-  const passiveChoices = createPassiveChoices(player);
+  const isBanned = (id: string) => bannedIds.includes(id);
+  const weaponChoices = createWeaponChoices(weapons).filter((c) => !isBanned(c.id));
+  const passiveChoices = createPassiveChoices(player).filter((c) => !isBanned(c.id));
   const choices: UpgradeOption[] = [];
 
-  addUnique(choices, pickOne(weaponChoices, rng));
-  addUnique(choices, pickOne(passiveChoices, rng));
+  if (preserveCard && !isBanned(preserveCard.id)) {
+    choices.push(preserveCard);
+  }
 
-  const statChoices = STAT_UPGRADES.map((choice) => ({
-    ...choice,
-    statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
-    rarity: 'common' as const
-  }));
+  const candidateWeapon = pickOne(weaponChoices.filter((c) => !choices.some((x) => x.id === c.id)), rng);
+  addUnique(choices, candidateWeapon);
+  const candidatePassive = pickOne(passiveChoices.filter((c) => !choices.some((x) => x.id === c.id)), rng);
+  addUnique(choices, candidatePassive);
+
+  const statChoices = STAT_UPGRADES
+    .filter((c) => !isBanned(c.id))
+    .map((choice) => ({
+      ...choice,
+      statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
+      rarity: 'common' as const,
+    }));
 
   const pool = [
     ...statChoices,
@@ -119,7 +134,12 @@ export function createUpgradeChoices(player: Player, weapons: Weapon[], rng: () 
   return choices;
 }
 
-export function createChestRewardChoices(player: Player, weapons: Weapon[], rng: () => number): UpgradeOption[] {
+export function createChestRewardChoices(
+  player: Player,
+  weapons: Weapon[],
+  rng: () => number,
+  bannedIds: string[] = [],
+): UpgradeOption[] {
   const statDeltaMap: Record<string, string> = {
     damage: '+24% damage',
     attackRate: '+14% attack speed',
@@ -130,6 +150,7 @@ export function createChestRewardChoices(player: Player, weapons: Weapon[], rng:
     projectileSpeed: '+18% proj. speed',
   };
 
+  const isBanned = (id: string) => bannedIds.includes(id);
   const choices: UpgradeOption[] = [];
   const eligibleEvolution = getEligibleEvolutions(player, weapons)[0];
 
@@ -137,16 +158,18 @@ export function createChestRewardChoices(player: Player, weapons: Weapon[], rng:
     choices.push(createEvolutionOption(eligibleEvolution.id));
   }
 
-  const rareStatChoices = RARE_STAT_UPGRADES.map((choice) => ({
-    ...choice,
-    statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
-    rarity: 'rare' as const
-  }));
+  const rareStatChoices = RARE_STAT_UPGRADES
+    .filter((c) => !isBanned(c.id))
+    .map((choice) => ({
+      ...choice,
+      statDelta: choice.stat ? statDeltaMap[choice.stat] : undefined,
+      rarity: 'rare' as const,
+    }));
 
   const pool = [
     ...rareStatChoices,
-    ...createWeaponChoices(weapons),
-    ...createPassiveChoices(player)
+    ...createWeaponChoices(weapons).filter((c) => !isBanned(c.id)),
+    ...createPassiveChoices(player).filter((c) => !isBanned(c.id))
   ].filter((choice) => !choices.some((selected) => selected.id === choice.id));
 
   while (choices.length < 3 && pool.length > 0) {
