@@ -27,7 +27,7 @@ export function setPlayerFacing(player: Player, target: Vector): Player {
 }
 
 export function damagePlayer(player: Player, amount: number): { player: Player; tookDamage: boolean } {
-  if (player.invulnerableTimer > 0 || player.health <= 0) {
+  if (player.invulnerableTimer > 0 || player.health <= 0 || player.dash.invulnRemaining > 0) {
     return { player, tookDamage: false };
   }
 

@@ -1,14 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500;1,700&family=DM+Mono:wght@400;500&display=swap');
+
 :root {
+  /* Established cosmic palette */
   --c-rare: #ffd166;
   --c-common: #5eead4;
   --c-danger: #ff335f;
   --c-arcane: #8b5cf6;
+
+  /* Astral Codex extensions */
+  --c-gold: #d4af37;
+  --c-gold-soft: #f1d77a;
+  --c-void: #06070f;
+  --c-void-deep: #02030a;
+  --c-parchment: #ede4d3;
+  --c-ink: #c8d0e0;
+
   --shadow-pop: 0 18px 50px rgb(255 209 102 / 18%);
+  --shadow-arcane: 0 1px 0 rgb(212 175 55 / 35%) inset, 0 0 0 1px rgb(212 175 55 / 12%) inset, 0 30px 90px rgb(0 0 0 / 70%);
+
+  --font-display: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --font-divine: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
+  --font-body: 'DM Mono', ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+
   color-scheme: dark;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #050711;
-  color: #f8fbff;
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "ss02";
+  background: var(--c-void-deep);
+  color: var(--c-parchment);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -325,6 +343,41 @@ button {
   letter-spacing: 0.02em;
 }
 
+/* ── Dash pips ── */
+.hud-bar-row--dash {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.dash-pips {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.dash-pip {
+  display: inline-block;
+  width: 11px; height: 11px;
+  transform: rotate(45deg);
+  background: rgba(168, 243, 255, 0.15);
+  border: 1px solid rgba(168, 243, 255, 0.4);
+  position: relative;
+  overflow: hidden;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.dash-pip.is-filled {
+  background: linear-gradient(135deg, #ffffff, #a8f3ff);
+  box-shadow: 0 0 8px rgba(168, 243, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.8);
+}
+.dash-pip.is-filling::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: var(--fill, 0%);
+  background: linear-gradient(0deg, rgba(168, 243, 255, 0.55), rgba(168, 243, 255, 0));
+}
+
 /* ── Weapon tiles ── */
 .hud-weapons-row {
   display: flex;
@@ -539,64 +592,162 @@ button {
 }
 
 .panel {
+  position: relative;
   width: min(680px, 100%);
-  border: 1px solid rgb(226 232 240 / 18%);
-  border-radius: 8px;
-  background: linear-gradient(150deg, rgb(15 23 42 / 92%), rgb(17 24 39 / 86%));
-  box-shadow: 0 30px 90px rgb(0 0 0 / 55%);
-  padding: clamp(22px, 4vw, 42px);
+  border: 0.5px solid rgb(212 175 55 / 28%);
+  border-radius: 2px;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgb(94 234 212 / 6%), transparent 55%),
+    radial-gradient(110% 80% at 100% 100%, rgb(255 51 95 / 5%), transparent 55%),
+    linear-gradient(168deg, rgb(11 14 28 / 96%), rgb(4 5 12 / 94%));
+  box-shadow: var(--shadow-arcane);
+  padding: clamp(28px, 4.4vw, 56px);
+}
+
+.panel::before,
+.panel::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Hairline gold filigree corners */
+.panel::before {
+  inset: 8px;
+  border: 0.5px solid rgb(212 175 55 / 18%);
+  border-radius: 1px;
+  mask:
+    linear-gradient(#000 0 0) top left / 28px 0.5px no-repeat,
+    linear-gradient(#000 0 0) top left / 0.5px 28px no-repeat,
+    linear-gradient(#000 0 0) top right / 28px 0.5px no-repeat,
+    linear-gradient(#000 0 0) top right / 0.5px 28px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 28px 0.5px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 0.5px 28px no-repeat,
+    linear-gradient(#000 0 0) bottom right / 28px 0.5px no-repeat,
+    linear-gradient(#000 0 0) bottom right / 0.5px 28px no-repeat;
+}
+
+/* Faint starfield grain */
+.panel::after {
+  inset: 0;
+  border-radius: inherit;
+  background-image:
+    radial-gradient(circle at 22% 18%, rgb(255 255 255 / 35%) 0.5px, transparent 1px),
+    radial-gradient(circle at 78% 64%, rgb(212 175 55 / 30%) 0.5px, transparent 1px),
+    radial-gradient(circle at 48% 88%, rgb(94 234 212 / 30%) 0.5px, transparent 1px),
+    radial-gradient(circle at 12% 72%, rgb(255 255 255 / 25%) 0.5px, transparent 1px),
+    radial-gradient(circle at 88% 22%, rgb(255 255 255 / 22%) 0.5px, transparent 1px);
+  opacity: 0.7;
+  mix-blend-mode: screen;
 }
 
 .menu-panel {
-  width: min(620px, 100%);
+  width: min(640px, 100%);
   position: relative;
   z-index: 1;
 }
 
+.menu-panel > * {
+  position: relative;
+  z-index: 2;
+}
+
 .eyebrow {
-  margin: 0 0 10px;
-  color: #5eead4;
-  font-size: 12px;
-  font-weight: 900;
+  position: relative;
+  margin: 0 0 18px;
+  padding-left: 36px;
+  color: var(--c-gold);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.42em;
+}
+
+.eyebrow::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 24px;
+  height: 0.5px;
+  background: linear-gradient(90deg, transparent, var(--c-gold) 30%, var(--c-gold));
+  transform: translateY(-50%);
 }
 
 h1,
 h2 {
   margin: 0;
-  line-height: 0.98;
-  letter-spacing: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-style: italic;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  color: var(--c-parchment);
+  text-shadow: 0 1px 28px rgb(94 234 212 / 12%);
 }
 
 h1 {
-  max-width: 10ch;
-  font-size: clamp(52px, 9vw, 92px);
+  max-width: 14ch;
+  font-size: clamp(56px, 10vw, 108px);
+  font-weight: 700;
 }
 
 h2 {
-  font-size: clamp(34px, 6vw, 62px);
+  font-size: clamp(38px, 7vw, 72px);
+}
+
+/* Asterism flourish under titles */
+h1::after,
+h2::after {
+  content: '✦  ✧  ✦';
+  display: block;
+  margin-top: 18px;
+  font-family: var(--font-display);
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.6em;
+  color: var(--c-gold);
+  opacity: 0.65;
 }
 
 .menu-copy {
-  max-width: 58ch;
-  color: #cbd5e1;
-  font-size: 17px;
-  line-height: 1.6;
-  margin: 20px 0 28px;
+  max-width: 56ch;
+  color: var(--c-ink);
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.55;
+  margin: 18px 0 30px;
+  letter-spacing: 0.005em;
+}
+
+.menu-copy::first-letter {
+  font-family: var(--font-divine);
+  font-size: 1.45em;
+  font-weight: 700;
+  color: var(--c-gold-soft);
+  letter-spacing: 0;
+  margin-right: 0.04em;
 }
 
 .menu-stats-banner {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin: 16px 0 12px;
-  padding: 10px 14px;
-  background: rgba(255, 209, 102, 0.08);
-  border: 1px solid rgba(255, 209, 102, 0.22);
-  border-radius: 999px;
-  font-size: 14px;
-  color: #ffd166;
+  gap: 10px;
+  margin: 16px 0 10px;
+  padding: 9px 18px 9px 14px;
+  background:
+    linear-gradient(90deg, rgb(212 175 55 / 9%), rgb(212 175 55 / 3%)),
+    rgb(6 7 15 / 60%);
+  border: 0.5px solid rgb(212 175 55 / 35%);
+  border-radius: 1px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--c-gold-soft);
+  text-transform: uppercase;
 }
 
 .menu-stats-banner svg {
@@ -604,23 +755,45 @@ h2 {
 }
 
 .menu-stats-banner strong {
-  color: #fff8e6;
-  font-weight: 800;
+  color: var(--c-parchment);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .menu-stats-sep {
+  color: var(--c-gold);
   opacity: 0.5;
+  font-family: var(--font-display);
+  font-style: italic;
 }
 
 .menu-last-run {
   display: block;
-  margin: 8px 0 16px;
-  padding: 8px 12px;
-  background: rgba(94, 234, 212, 0.05);
-  border: 1px solid rgba(94, 234, 212, 0.15);
-  border-radius: 6px;
-  font-size: 13px;
-  color: #94a3b8;
+  margin: 4px 0 22px;
+  padding-left: 22px;
+  position: relative;
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(148 163 184 / 75%);
+  border: none;
+  background: transparent;
+  border-radius: 0;
+}
+
+.menu-last-run::before {
+  content: '☉';
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--c-gold);
+  opacity: 0.7;
+  font-size: 14px;
+  letter-spacing: 0;
 }
 
 .button-row {
@@ -637,31 +810,93 @@ h2 {
 
 .primary-button,
 .secondary-button {
-  min-height: 46px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  padding: 0 18px;
-  font-weight: 900;
+  position: relative;
+  min-height: 52px;
+  border-radius: 1px;
+  border: 0.5px solid transparent;
+  padding: 0 26px;
+  font-family: var(--font-divine);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
   cursor: pointer;
+  transition: transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1),
+              box-shadow 220ms ease,
+              border-color 220ms ease,
+              color 220ms ease,
+              letter-spacing 220ms ease;
+  isolation: isolate;
+  overflow: hidden;
 }
 
 .primary-button {
-  color: #04111a;
-  background: linear-gradient(135deg, #5eead4, #ffd166);
-  box-shadow: 0 12px 38px rgb(94 234 212 / 24%);
+  color: var(--c-parchment);
+  background:
+    linear-gradient(180deg, rgb(94 234 212 / 14%), rgb(212 175 55 / 8%)),
+    rgb(6 7 15 / 92%);
+  border-color: var(--c-gold);
+  box-shadow:
+    0 0 0 1px rgb(212 175 55 / 18%) inset,
+    0 14px 42px rgb(94 234 212 / 16%),
+    0 0 0 0.5px rgb(212 175 55 / 0%);
+}
+
+.primary-button::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 0.5px solid rgb(212 175 55 / 22%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.primary-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 200% at 50% 120%, rgb(94 234 212 / 36%), transparent 60%);
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.primary-button:hover {
+  transform: translateY(-1px);
+  letter-spacing: 0.42em;
+  border-color: var(--c-gold-soft);
+  box-shadow:
+    0 0 0 1px rgb(241 215 122 / 30%) inset,
+    0 18px 60px rgb(94 234 212 / 28%),
+    0 0 32px rgb(212 175 55 / 22%);
+}
+
+.primary-button:hover::after {
+  opacity: 1;
+}
+
+.primary-button:active {
+  transform: translateY(0);
 }
 
 .secondary-button {
-  color: #f8fbff;
-  background: rgb(255 255 255 / 8%);
-  border-color: rgb(255 255 255 / 18%);
+  color: var(--c-ink);
+  background: rgb(6 7 15 / 60%);
+  border-color: rgb(212 175 55 / 30%);
+}
+
+.secondary-button:hover {
+  color: var(--c-parchment);
+  border-color: rgb(212 175 55 / 60%);
+  background: rgb(6 7 15 / 80%);
+  letter-spacing: 0.42em;
 }
 
 .btn--primary-large {
   width: 100%;
-  padding: 14px 24px;
-  font-size: 1rem;
-  font-weight: 700;
+  padding: 18px 28px;
+  font-size: 13px;
 }
 
 .upgrade-panel {
@@ -1015,27 +1250,33 @@ h2 {
 
 /* ── Control hint ── */
 .control-hint {
-  margin: 16px 0 0;
-  color: #64748b;
-  font-size: 13px;
-  line-height: 1.5;
+  margin: 22px 0 0;
+  padding-top: 18px;
+  border-top: 0.5px solid rgb(212 175 55 / 18%);
+  color: rgb(148 163 184 / 80%);
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  line-height: 1.7;
 }
 
 .control-hint strong {
-  color: #94a3b8;
+  color: var(--c-parchment);
+  font-weight: 500;
 }
 
 .control-hint kbd {
   display: inline-block;
-  padding: 2px 7px;
-  border-radius: 4px;
-  border: 1px solid rgb(255 255 255 / 14%);
-  background: rgb(255 255 255 / 6%);
-  color: #cbd5e1;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 1px;
+  border: 0.5px solid rgb(212 175 55 / 35%);
+  background: rgb(6 7 15 / 60%);
+  color: var(--c-gold-soft);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   vertical-align: 1px;
 }
 
@@ -1043,62 +1284,115 @@ h2 {
 .menu-arsenal {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 10px 14px;
-  border: 1px dashed rgb(94 234 212 / 20%);
-  border-radius: 10px;
-  background: rgb(94 234 212 / 4%);
+  gap: 16px;
+  margin-top: 22px;
+  padding: 14px 18px;
+  border: 0.5px solid rgb(94 234 212 / 22%);
+  border-radius: 1px;
+  background:
+    linear-gradient(90deg, rgb(94 234 212 / 5%), transparent 70%),
+    rgb(6 7 15 / 50%);
+  position: relative;
+}
+
+.menu-arsenal::before {
+  content: '⟡';
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--c-void-deep);
+  padding: 0 6px;
+  color: var(--c-gold);
+  font-size: 14px;
 }
 
 .menu-arsenal-label {
   color: var(--c-common);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.14em;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.32em;
   text-transform: uppercase;
 }
 
 .menu-arsenal-icons {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .menu-arsenal-icons > svg {
-  filter: drop-shadow(0 0 6px rgb(94 234 212 / 25%));
+  filter: drop-shadow(0 0 8px rgb(94 234 212 / 35%));
+  transition: transform 320ms ease;
+}
+
+.menu-arsenal:hover .menu-arsenal-icons > svg {
+  transform: translateY(-1px);
 }
 
 .menu-arsenal-more {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 700;
+  color: rgb(148 163 184 / 70%);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 /* ── Eclipse motif ── */
 .eclipse-motif {
   position: absolute;
-  top: 18%;
-  right: 8%;
-  width: clamp(280px, 36vmin, 420px);
+  top: 12%;
+  right: 6%;
+  width: clamp(300px, 40vmin, 480px);
   aspect-ratio: 1;
   pointer-events: none;
   z-index: 0;
 }
 
+/* Outer chromatic aberration ring */
+.eclipse-motif::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 220deg,
+      rgb(255 209 102 / 0%) 0deg,
+      rgb(255 209 102 / 18%) 60deg,
+      rgb(212 175 55 / 32%) 120deg,
+      rgb(255 51 95 / 14%) 180deg,
+      rgb(139 92 246 / 16%) 240deg,
+      rgb(94 234 212 / 12%) 300deg,
+      rgb(255 209 102 / 0%) 360deg);
+  filter: blur(28px);
+  opacity: 0.75;
+  animation: corona-rotate 36s linear infinite;
+}
+
+/* Faint zodiac ring (engraved circle outside the disc) */
+.eclipse-motif::after {
+  content: '';
+  position: absolute;
+  inset: -6%;
+  border-radius: 50%;
+  border: 0.5px dashed rgb(212 175 55 / 28%);
+  animation: corona-rotate 80s linear infinite reverse;
+}
+
 .eclipse-corona {
   position: absolute;
-  inset: -25%;
+  inset: -20%;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgb(255 209 102 / 22%) 0%,
-    rgb(255 138 61 / 12%) 28%,
-    rgb(139 92 246 / 6%) 55%,
+    rgb(255 209 102 / 28%) 0%,
+    rgb(255 138 61 / 14%) 26%,
+    rgb(139 92 246 / 8%) 52%,
     transparent 75%
   );
-  filter: blur(3px);
+  filter: blur(4px);
   animation: eclipse-pulse 6s ease-in-out infinite alternate;
 }
 
@@ -1109,17 +1403,45 @@ h2 {
   width: 70%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 38%, #221a48 0%, #07050f 72%);
+  background:
+    radial-gradient(circle at 38% 36%, #1a1338 0%, #06050e 72%);
   box-shadow:
-    0 0 0 1.5px rgb(255 209 102 / 50%),
-    0 0 80px 12px rgb(255 209 102 / 28%),
-    inset 0 0 50px rgb(0 0 0 / 85%);
+    0 0 0 1px rgb(212 175 55 / 75%),
+    0 0 0 4px rgb(212 175 55 / 8%),
+    0 0 100px 16px rgb(255 209 102 / 30%),
+    inset 0 0 60px rgb(0 0 0 / 90%),
+    inset 0 0 0 8px rgb(0 0 0 / 35%);
   transform: translate(-50%, -50%);
+}
+
+/* Bailey's beads — bright pinpricks at disc edge */
+.eclipse-disc::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 92% 32%, rgb(255 247 220) 0 1.4px, transparent 2px),
+    radial-gradient(circle at 8% 70%, rgb(255 247 220) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 70% 96%, rgb(255 247 220) 0 1px, transparent 1.6px);
+  filter: drop-shadow(0 0 6px rgb(255 247 220 / 80%));
+  animation: bead-flicker 3.8s ease-in-out infinite;
 }
 
 @keyframes eclipse-pulse {
   from { opacity: 0.8; transform: scale(1); }
   to   { opacity: 1; transform: scale(1.06); }
+}
+
+@keyframes corona-rotate {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bead-flicker {
+  0%, 100% { opacity: 0.7; }
+  40%      { opacity: 1; }
+  50%      { opacity: 0.5; }
+  60%      { opacity: 1; }
 }
 
 @media (max-width: 820px) {
@@ -1625,39 +1947,136 @@ h2 {
   border-color: rgb(120 140 200 / 20%);
 }
 
-/* Eclipse Shards wallet UI (replay foundation slice 1) */
+/* Eclipse Shards wallet UI (Astral Codex sigil) */
 .wallet-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 14px;
+  gap: 12px;
+  padding: 8px 18px 8px 14px;
   margin: 6px auto 0;
-  background: rgb(40 30 80 / 55%);
-  border: 1px solid rgb(180 130 255 / 45%);
-  border-radius: 999px;
-  color: #e8d8ff;
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  background:
+    linear-gradient(90deg, rgb(212 175 55 / 10%), rgb(139 92 246 / 6%) 60%, rgb(139 92 246 / 0%)),
+    rgb(6 7 15 / 70%);
+  border: 0.5px solid rgb(212 175 55 / 45%);
+  border-radius: 1px;
+  color: var(--c-parchment);
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  box-shadow: 0 0 0 1px rgb(212 175 55 / 8%) inset;
+  transition: border-color 220ms ease, transform 180ms ease;
+}
+
+.wallet-chip:hover {
+  border-color: rgb(241 215 122 / 75%);
+  transform: translateY(-1px);
 }
 
 .wallet-chip__gem {
-  color: #d4a3ff;
-  font-size: 11px;
+  color: var(--c-gold);
+  font-size: 14px;
+  filter: drop-shadow(0 0 6px rgb(212 175 55 / 50%));
+  animation: sigil-twinkle 4.4s ease-in-out infinite;
+}
+
+@keyframes sigil-twinkle {
+  0%, 100% { opacity: 0.85; transform: rotate(0deg); }
+  50%      { opacity: 1; transform: rotate(180deg); }
 }
 
 .wallet-chip strong {
-  color: #fff7c2;
+  color: var(--c-gold-soft);
+  font-family: var(--font-display);
   font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .end-screen-reward {
   margin-top: 14px;
-  font-size: 15px;
-  color: #ffd166;
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--c-gold);
   text-align: center;
 }
 
 .end-screen-reward strong {
-  color: #fff7c2;
+  color: var(--c-gold-soft);
+  font-family: var(--font-display);
   font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ── Astral Codex: entrance choreography + atmosphere ── */
+
+@keyframes ac-rise {
+  from { opacity: 0; transform: translateY(14px); filter: blur(2px); }
+  to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
+}
+
+@keyframes ac-glow-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.overlay--menu .menu-panel > * {
+  animation: ac-rise 720ms cubic-bezier(0.2, 0.7, 0.1, 1) both;
+}
+.overlay--menu .menu-panel > *:nth-child(1) { animation-delay: 80ms; }
+.overlay--menu .menu-panel > *:nth-child(2) { animation-delay: 160ms; }
+.overlay--menu .menu-panel > *:nth-child(3) { animation-delay: 240ms; }
+.overlay--menu .menu-panel > *:nth-child(4) { animation-delay: 320ms; }
+.overlay--menu .menu-panel > *:nth-child(5) { animation-delay: 400ms; }
+.overlay--menu .menu-panel > *:nth-child(6) { animation-delay: 460ms; }
+.overlay--menu .menu-panel > *:nth-child(7) { animation-delay: 520ms; }
+.overlay--menu .menu-panel > *:nth-child(8) { animation-delay: 580ms; }
+.overlay--menu .menu-panel > *:nth-child(9) { animation-delay: 640ms; }
+
+.overlay--menu .eclipse-motif {
+  animation: ac-glow-in 1400ms cubic-bezier(0.2, 0.7, 0.1, 1) both;
+}
+
+/* Atmospheric grain — subtle high-frequency noise so the void doesn't feel flat */
+.overlay--menu::after {
+  background-image:
+    radial-gradient(circle at 20% 80%, rgb(255 209 102 / 5%) 0%, transparent 40%),
+    radial-gradient(ellipse at 70% 30%, rgb(94 234 212 / 4%) 0%, transparent 50%),
+    repeating-linear-gradient(
+      135deg,
+      rgb(212 175 55 / 0%) 0,
+      rgb(212 175 55 / 0%) 2px,
+      rgb(212 175 55 / 1.4%) 2px,
+      rgb(212 175 55 / 1.4%) 3px
+    );
+}
+
+/* Astral Codex: tighten meter/HUD typography to use mono-display rhythm */
+.health-meter strong em,
+.xp-meter strong em,
+.boss-health-meter strong em {
+  font-family: var(--font-display);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.meter-divider,
+.meter-max,
+.meter-suffix {
+  font-family: var(--font-body);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+/* Tighter rhythm for the link button on LAN screens */
+.link-button {
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }

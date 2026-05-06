@@ -2,6 +2,14 @@ import type { GameState, Player, Vector, Weapon } from './types';
 import { getXpThreshold } from './upgrades';
 import { createRunDirectorState } from './runDirector';
 
+const DASH_DEFAULTS = {
+  maxCharges: 2,
+  rechargeDuration: 2.5,  // seconds per charge
+  speed: 1220,            // px/s during dash
+  duration: 0.18,         // seconds dash is active
+  invulnTail: 0.06        // additional i-frame seconds after dash ends
+};
+
 export function createStartingPlayer(position: Vector): Player {
   return {
     position,
@@ -16,7 +24,24 @@ export function createStartingPlayer(position: Vector): Player {
     areaMultiplier: 1,
     projectileSpeedMultiplier: 1,
     invulnerableTimer: 0,
-    facingAngle: 0
+    facingAngle: 0,
+    dash: {
+      charges: DASH_DEFAULTS.maxCharges,
+      maxCharges: DASH_DEFAULTS.maxCharges,
+      rechargeRemaining: 0,
+      rechargeDuration: DASH_DEFAULTS.rechargeDuration,
+      active: false,
+      activeRemaining: 0,
+      invulnRemaining: 0,
+      dirX: 0,
+      dirY: 0,
+      speed: DASH_DEFAULTS.speed,
+      hitIds: [],
+      queued: false
+    },
+    dashDamageMult: 1,
+    dashRechargeMult: 1,
+    dashChargeBonus: 0
   };
 }
 

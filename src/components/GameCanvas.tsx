@@ -151,6 +151,13 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
         if (!isTyping) event.preventDefault();
       }
 
+      if (event.code === 'Space' && !isTyping) {
+        if (!event.repeat) {
+          engine.dash();
+        }
+        event.preventDefault();
+      }
+
       if (event.code === 'Escape' && !isTyping) {
         engine.togglePause();
         onSnapshot(engine.getSnapshot());

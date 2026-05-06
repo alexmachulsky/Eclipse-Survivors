@@ -120,13 +120,14 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
     moveDown: false,
     moveLeft: false,
     moveRight: false,
-    reviveHeld: false
+    reviveHeld: false,
+    dashHeld: false
   });
   const mouseRef = useRef<Vector>({ x: 0, y: 0 });
   const viewSizeRef = useRef({ width: 1280, height: 720 });
   const seqRef = useRef(0);
   const cmdTimerRef = useRef(0); // seconds since last command sent
-  const lastSentKeysRef = useRef({ moveUp: false, moveDown: false, moveLeft: false, moveRight: false, reviveHeld: false });
+  const lastSentKeysRef = useRef({ moveUp: false, moveDown: false, moveLeft: false, moveRight: false, reviveHeld: false, dashHeld: false });
   // Client-side prediction: locally simulate the local player's position so it
   // responds instantly to input instead of waiting for a server round-trip.
   const predictedPosRef = useRef<Vector | null>(null);
@@ -265,7 +266,8 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
           k2.moveDown !== lastK.moveDown ||
           k2.moveLeft !== lastK.moveLeft ||
           k2.moveRight !== lastK.moveRight ||
-          k2.reviveHeld !== lastK.reviveHeld;
+          k2.reviveHeld !== lastK.reviveHeld ||
+          k2.dashHeld !== lastK.dashHeld;
         if (inputChanged || cmdTimerRef.current >= 1 / 30) {
           cmdTimerRef.current = 0;
           lastSentKeysRef.current = { ...k2 };
@@ -280,8 +282,10 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
             moveRight: k2.moveRight,
             aimWorldX: aim.x,
             aimWorldY: aim.y,
-            reviveHeld: k2.reviveHeld
+            reviveHeld: k2.reviveHeld,
+            dashHeld: k2.dashHeld
           });
+          keysRef.current.dashHeld = false;
           seqRef.current += 1;
         }
       }
@@ -322,6 +326,13 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
       if (mapped) {
         keysRef.current[mapped] = true;
         if (!isTyping) event.preventDefault();
+      }
+
+      if (event.code === 'Space' && !isTyping) {
+        if (!event.repeat) {
+          keysRef.current.dashHeld = true;
+        }
+        event.preventDefault();
       }
 
       if (event.code === 'KeyE' && !isTyping) {

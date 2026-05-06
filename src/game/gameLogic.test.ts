@@ -162,7 +162,8 @@ describe('core game logic', () => {
       moveRight: true,
       aimWorldX: 600,
       aimWorldY: 100,
-      reviveHeld: false
+      reviveHeld: false,
+      dashHeld: false
     });
     sim.getState().enemies.push({
       id: 'enemy-test',
@@ -206,7 +207,8 @@ describe('core game logic', () => {
       moveRight: false,
       aimWorldX: 120,
       aimWorldY: 100,
-      reviveHeld: true
+      reviveHeld: true,
+      dashHeld: false
     });
 
     sim.update(3.1);

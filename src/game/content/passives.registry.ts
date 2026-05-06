@@ -37,4 +37,29 @@ export const PASSIVES: Record<string, PassiveDef> = {
     maxLevel: 5,
     apply: (p) => ({ ...p, projectileSpeedMultiplier: p.projectileSpeedMultiplier * 1.12 }),
   },
+  'comet-catalyst': {
+    id: 'comet-catalyst',
+    name: 'Comet Catalyst',
+    description: '+25% dash damage per level',
+    maxLevel: 5,
+    apply: (p) => ({ ...p, dashDamageMult: p.dashDamageMult + 0.25 }),
+  },
+  'stellar-drive': {
+    id: 'stellar-drive',
+    name: 'Stellar Drive',
+    description: '-15% dash recharge per level',
+    maxLevel: 5,
+    apply: (p) => ({ ...p, dashRechargeMult: Math.max(0.25, p.dashRechargeMult - 0.15) }),
+  },
+  'eclipse-momentum': {
+    id: 'eclipse-momentum',
+    name: 'Eclipse Momentum',
+    description: '+1 dash charge',
+    maxLevel: 1,
+    apply: (p) => {
+      const next = { ...p, dashChargeBonus: p.dashChargeBonus + 1 };
+      // Top up current charges so the unlock feels immediate
+      return { ...next, dash: { ...next.dash, charges: Math.min(next.dash.charges + 1, next.dash.maxCharges + next.dashChargeBonus) } };
+    },
+  },
 };

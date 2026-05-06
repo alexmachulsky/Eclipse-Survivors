@@ -2,6 +2,7 @@ import { angleTo, circlesOverlapSq, clamp, distanceSq, vectorFromAngle } from '.
 import { chooseEnemyType, getBossSpawn, spawnEnemyOutsideViewport, updateEnemies } from './enemies';
 import { createDeathParticles, createXpGem, updateParticles } from './particles';
 import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
+import { startDash, tickDashCooldown, tickDashMotion, resolveDashHits, tryQueueDash, consumeDashQueue } from './dash';
 import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
 import {
@@ -347,6 +348,48 @@ export class GameSim {
         x: command?.aimWorldX ?? runtime.player.position.x + Math.cos(runtime.player.facingAngle),
         y: command?.aimWorldY ?? runtime.player.position.y + Math.sin(runtime.player.facingAngle)
       });
+
+      // --- Dash (server-authoritative) ---
+      // Process dashHeld intent: start a new dash, or queue one if already dashing.
+      if (command?.dashHeld) {
+        const aimDx = (command.aimWorldX ?? runtime.player.position.x) - runtime.player.position.x;
+        const aimDy = (command.aimWorldY ?? runtime.player.position.y) - runtime.player.position.y;
+        if (runtime.player.dash.active) {
+          runtime.player = tryQueueDash(runtime.player);
+        } else {
+          const next = startDash(runtime.player, aimDx, aimDy);
+          if (next) runtime.player = next;
+        }
+      }
+
+      // Tick cooldown + motion + hit resolution every frame
+      runtime.player = tickDashCooldown(runtime.player, dt);
+      const motion = tickDashMotion(runtime.player, dt);
+      runtime.player = motion.player;
+      if (motion.segment) {
+        const hits = resolveDashHits(motion.segment, this.state.enemies, runtime.player);
+        if (hits.hits.length > 0) {
+          for (const hit of hits.hits) {
+            const enemy = this.state.enemies.find((e) => e.id === hit.enemyId);
+            if (!enemy) continue;
+            enemy.health = Math.max(0, enemy.health - hit.damage);
+            enemy.hitFlash = 0.12;
+            runtime.stats.damageDealt += hit.damage;
+          }
+          runtime.player = {
+            ...runtime.player,
+            dash: { ...runtime.player.dash, hitIds: hits.updatedHitIds }
+          };
+          this.state.screenShake = Math.max(this.state.screenShake, 4);
+        }
+      }
+      // Consume queued dash on the frame the current one ends
+      if (!runtime.player.dash.active && runtime.player.dash.queued) {
+        const queueDx = (command?.aimWorldX ?? runtime.player.position.x) - runtime.player.position.x;
+        const queueDy = (command?.aimWorldY ?? runtime.player.position.y) - runtime.player.position.y;
+        const queued = consumeDashQueue(runtime.player, queueDx, queueDy);
+        if (queued) runtime.player = queued;
+      }
     }
   }
 
