@@ -175,6 +175,10 @@ export function tryQueueDash(player: Player): Player {
 export function consumeDashQueue(player: Player, dirX: number, dirY: number): Player | null {
   if (!player.dash.queued) return null;
   if (player.dash.active) return null;
-  if (player.dash.charges <= 0) return null;
-  return startDash(player, dirX, dirY);
+  // Single-shot queue: clear the flag whether or not a charge is available.
+  // Otherwise the queue could fire after an arbitrary delay when a charge regenerates,
+  // contradicting the spec ("fires the frame the current one ends").
+  const cleared = { ...player, dash: { ...player.dash, queued: false } };
+  if (cleared.dash.charges <= 0) return cleared;
+  return startDash(cleared, dirX, dirY) ?? cleared;
 }

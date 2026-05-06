@@ -226,14 +226,17 @@ describe('dash queue', () => {
     expect(next!.dash.queued).toBe(false);
   });
 
-  it('consumeDashQueue returns null and clears queue when no charge left', () => {
+  it('consumeDashQueue clears the queue (single-shot) even when no charge left', () => {
     const p = createStartingPlayer({ x: 0, y: 0 });
     const empty = {
       ...p,
       dash: { ...p.dash, active: false, queued: true, charges: 0 }
     };
     const next = consumeDashQueue(empty, 1, 0);
-    expect(next).toBeNull();
+    expect(next).not.toBeNull();
+    expect(next!.dash.queued).toBe(false);
+    expect(next!.dash.active).toBe(false);
+    expect(next!.dash.charges).toBe(0);
   });
 });
 
