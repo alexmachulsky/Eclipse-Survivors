@@ -2080,3 +2080,541 @@ h2::after {
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
+
+/* ──────────────────────────────────────────────────────────
+   Eclipse Codex — editorial almanac main menu
+   ────────────────────────────────────────────────────────── */
+
+.overlay--codex {
+  /* Editorial: align the panel left of center so the eclipse
+     diagram can bleed off the right edge of the panel. */
+  place-items: center start;
+  padding-left: clamp(56px, 8vw, 140px);
+  padding-right: clamp(40px, 6vw, 120px);
+}
+
+/* The horizontal ritual line that splits the viewport — an etched
+   gold rule with a tiny sigil break exactly in the middle.
+   Sits BEHIND the panel but in front of the cosmic atmosphere. */
+.ritual-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg,
+      rgb(212 175 55 / 0) 0%,
+      rgb(212 175 55 / 0.55) 12%,
+      rgb(212 175 55 / 0.9) 50%,
+      rgb(212 175 55 / 0.55) 88%,
+      rgb(212 175 55 / 0) 100%);
+  filter: drop-shadow(0 0 6px rgb(212 175 55 / 0.18));
+  animation: ritual-line-breathe 5.6s ease-in-out infinite;
+}
+
+.ritual-line::before,
+.ritual-line::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border: 0.5px solid rgb(212 175 55 / 0.7);
+  background: var(--c-void-deep);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px rgb(212 175 55 / 0.25);
+}
+
+.ritual-line::before { left: 22%; }
+.ritual-line::after  { right: 22%; }
+
+.ritual-line__sigil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, -50%);
+  background: var(--c-void-deep);
+  border: 0.5px solid rgb(212 175 55 / 0.5);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--c-gold-soft);
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0;
+  box-shadow:
+    0 0 0 4px var(--c-void-deep),
+    0 0 18px rgb(212 175 55 / 0.18),
+    inset 0 0 8px rgb(212 175 55 / 0.18);
+  animation: ritual-sigil-rotate 22s linear infinite;
+}
+
+@keyframes ritual-line-breathe {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
+}
+
+@keyframes ritual-sigil-rotate {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Vertical codex rails — rotated tracking text along the
+   viewport edges. Reinforces the "open almanac" feel. */
+.codex-rail {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  z-index: 1;
+  pointer-events: none;
+  transform: translateY(-50%) rotate(-90deg);
+  transform-origin: left center;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: rgb(212 175 55 / 0.55);
+  white-space: nowrap;
+}
+
+.codex-rail--right {
+  left: auto;
+  right: 22px;
+  transform: translateY(-50%) rotate(90deg);
+  transform-origin: right center;
+  font-style: italic;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: none;
+  color: rgb(200 208 224 / 0.55);
+}
+
+.codex-rail__sep {
+  color: rgb(212 175 55 / 0.7);
+  font-size: 8px;
+}
+
+/* Eclipse diagram (SVG) — replaces the original CSS-only motif when
+   .eclipse-motif--codex is applied. Bleeds past the panel's right edge. */
+.eclipse-motif--codex {
+  top: 50%;
+  right: clamp(40px, 6vw, 120px);
+  transform: translateY(-50%);
+  width: clamp(360px, 46vmin, 620px);
+  z-index: 2;
+  /* Override original ::before/::after which drew their own corona/dashed ring;
+     the SVG handles all of that now. */
+}
+.eclipse-motif--codex::before,
+.eclipse-motif--codex::after {
+  display: none;
+}
+
+.eclipse-diagram {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 0 60px rgb(255 209 102 / 0.18));
+}
+
+.eclipse-diagram .ed-ring--outer {
+  transform-origin: 200px 200px;
+  animation: ed-rotate 80s linear infinite;
+}
+.eclipse-diagram .ed-ring--mid {
+  transform-origin: 200px 200px;
+  animation: ed-rotate 50s linear infinite reverse;
+}
+.eclipse-diagram .ed-sigils {
+  transform-origin: 200px 200px;
+  animation: ed-rotate 240s linear infinite;
+}
+.eclipse-diagram .ed-crosshair {
+  transform-origin: 200px 200px;
+  animation: ed-rotate 32s linear infinite;
+}
+.eclipse-diagram .ed-corona-pulse {
+  transform-origin: 200px 200px;
+  animation: ed-corona-pulse 6s ease-in-out infinite alternate;
+}
+.eclipse-diagram .ed-beads circle {
+  animation: ed-bead-twinkle 4.4s ease-in-out infinite;
+}
+.eclipse-diagram .ed-beads circle:nth-child(2) { animation-delay: -1.1s; }
+.eclipse-diagram .ed-beads circle:nth-child(3) { animation-delay: -2.2s; }
+.eclipse-diagram .ed-beads circle:nth-child(4) { animation-delay: -3.3s; }
+
+@keyframes ed-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes ed-corona-pulse {
+  from { opacity: 0.85; transform: scale(0.99); }
+  to   { opacity: 1;    transform: scale(1.04); }
+}
+@keyframes ed-bead-twinkle {
+  0%, 100% { opacity: 0.3; }
+  45%      { opacity: 1; }
+  60%      { opacity: 0.55; }
+}
+
+/* Editorial menu panel — wider, more dramatic, transparent backdrop
+   so the diagram can read through the right edge. */
+.menu-panel--codex {
+  width: min(540px, 100%);
+  z-index: 3;
+  padding: clamp(26px, 3.4vw, 44px) clamp(32px, 4vw, 52px);
+  background:
+    radial-gradient(140% 80% at 0% 0%, rgb(94 234 212 / 0.07), transparent 50%),
+    radial-gradient(120% 80% at 0% 100%, rgb(139 92 246 / 0.05), transparent 55%),
+    linear-gradient(105deg, rgb(11 14 28 / 0.94) 0%, rgb(8 10 22 / 0.86) 60%, rgb(6 8 18 / 0.55) 100%);
+}
+
+/* In the codex layout, condense vertical rhythm so the whole spread
+   reads as one editorial composition that fits in the viewport. */
+.menu-panel--codex .eyebrow { margin-bottom: 14px; }
+.menu-panel--codex .menu-copy { margin: 16px 0 22px; font-size: 17px; }
+.menu-panel--codex .menu-arsenal { margin-top: 18px; padding: 11px 16px; }
+.menu-panel--codex .control-hint { margin-top: 16px; padding-top: 14px; }
+.menu-panel--codex .button-row { margin-top: 22px; }
+.menu-panel--codex .almanac-strip { margin: 18px 0 4px; padding: 12px 0; }
+
+.menu-panel--codex::before {
+  /* tighter inner filigree frame with longer corner brackets */
+  inset: 6px;
+  mask:
+    linear-gradient(#000 0 0) top left / 38px 0.5px no-repeat,
+    linear-gradient(#000 0 0) top left / 0.5px 38px no-repeat,
+    linear-gradient(#000 0 0) top right / 38px 0.5px no-repeat,
+    linear-gradient(#000 0 0) top right / 0.5px 38px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 38px 0.5px no-repeat,
+    linear-gradient(#000 0 0) bottom left / 0.5px 38px no-repeat,
+    linear-gradient(#000 0 0) bottom right / 38px 0.5px no-repeat,
+    linear-gradient(#000 0 0) bottom right / 0.5px 38px no-repeat;
+  border-color: rgb(212 175 55 / 0.32);
+}
+
+/* Decorative sigil corner ornaments inside the panel */
+.sigil-corner {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  z-index: 4;
+  pointer-events: none;
+  filter: drop-shadow(0 0 6px rgb(212 175 55 / 0.2));
+}
+.sigil-corner--tl { top: 14px; left: 14px; }
+.sigil-corner--br { bottom: 14px; right: 14px; }
+
+/* Heading — impactful display with gilded em flourish on "ritual" */
+.menu-title {
+  position: relative;
+  margin: 0;
+  max-width: 11ch;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-style: italic;
+  font-size: clamp(52px, 6.6vw, 96px);
+  line-height: 0.95;
+  letter-spacing: -0.012em;
+  color: var(--c-parchment);
+  text-shadow: 0 1px 28px rgb(94 234 212 / 0.1), 0 1px 60px rgb(0 0 0 / 0.65);
+  text-wrap: balance;
+}
+
+/* "ritual" word — keep it inline so it flows on the same line as
+   "line" rather than forcing its own wrap. */
+.menu-title em {
+  display: inline;
+  position: relative;
+  font-style: italic;
+  font-weight: 700;
+  color: var(--c-gold-soft);
+  background: linear-gradient(180deg, var(--c-gold-soft) 0%, var(--c-gold) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 30px rgb(212 175 55 / 0.35);
+}
+
+/* No bracket pseudo-elements on inline em (they break layout) — the
+   horizontal ritual line below the title already plays that role. */
+
+/* Drop the asterism flourish in codex layout — the ritual line + sigil
+   crossing the viewport already serves as the title's underline. */
+.menu-panel--codex .menu-title::after { content: none; }
+
+/* ── Almanac strip — engraved horizontal stat row ─────────── */
+.almanac-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 0;
+  margin: 22px 0 6px;
+  padding: 14px 0;
+  border-top: 0.5px solid rgb(212 175 55 / 0.32);
+  border-bottom: 0.5px solid rgb(212 175 55 / 0.32);
+  position: relative;
+  background: linear-gradient(180deg, rgb(212 175 55 / 0.04), transparent 60%);
+}
+
+/* faint hairlines above/below for that almanac double-rule feel */
+.almanac-strip::before,
+.almanac-strip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgb(212 175 55 / 0.12);
+  pointer-events: none;
+}
+.almanac-strip::before { top: -4px; }
+.almanac-strip::after  { bottom: -4px; }
+
+.almanac-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0 16px;
+}
+.almanac-cell + .almanac-cell::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8%;
+  bottom: 8%;
+  width: 1px;
+  background: linear-gradient(180deg,
+    transparent,
+    rgb(212 175 55 / 0.32) 30%,
+    rgb(212 175 55 / 0.32) 70%,
+    transparent);
+}
+.almanac-cell:first-child {
+  padding-left: 4px;
+}
+
+.almanac-cell__label {
+  font-family: var(--font-body);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: rgb(212 175 55 / 0.7);
+}
+
+.almanac-cell__value {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  color: var(--c-parchment);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.almanac-cell--shards .almanac-cell__value {
+  color: var(--c-gold-soft);
+}
+
+.almanac-shard-glyph {
+  display: inline-block;
+  font-style: normal;
+  font-size: 14px;
+  color: var(--c-gold);
+  filter: drop-shadow(0 0 6px rgb(212 175 55 / 0.5));
+  animation: sigil-twinkle 4.4s ease-in-out infinite;
+}
+
+/* ── Button row: ritual primary + dotted "or" divider + secondary ── */
+.menu-panel--codex .button-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  margin-top: 28px;
+}
+
+.btn--ritual {
+  display: grid;
+  grid-template-columns: 22px 1fr 22px;
+  align-items: center;
+  gap: 14px;
+  padding: 17px 22px;
+  text-align: left;
+}
+
+.btn--ritual .btn-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0.5px solid rgb(212 175 55 / 0.55);
+  border-radius: 50%;
+  color: var(--c-gold-soft);
+  font-family: var(--font-display);
+  font-style: normal;
+  font-size: 13px;
+  letter-spacing: 0;
+  background: rgb(6 7 15 / 0.6);
+  box-shadow: inset 0 0 6px rgb(212 175 55 / 0.18);
+  transition: transform 320ms ease, box-shadow 320ms ease, border-color 220ms ease;
+}
+
+.btn--ritual:hover .btn-glyph {
+  transform: rotate(180deg);
+  border-color: var(--c-gold-soft);
+  box-shadow: inset 0 0 10px rgb(241 215 122 / 0.32), 0 0 12px rgb(241 215 122 / 0.18);
+}
+
+.btn--ritual .btn-label {
+  text-align: center;
+}
+
+.btn--ritual .btn-flourish {
+  font-family: var(--font-display);
+  font-style: normal;
+  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: rgb(212 175 55 / 0.6);
+  transition: transform 220ms ease, color 220ms ease;
+}
+
+.btn--ritual:hover .btn-flourish {
+  transform: translateX(4px);
+  color: var(--c-gold-soft);
+}
+
+.button-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 12px;
+  color: rgb(200 208 224 / 0.55);
+}
+
+.button-divider::before,
+.button-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(212 175 55 / 0.32), transparent);
+}
+
+.button-divider span {
+  padding: 0 14px;
+  letter-spacing: 0.06em;
+}
+
+/* The codex menu hides the original gold-pill stats banner entirely
+   — those values now live in the almanac strip. */
+.menu-panel--codex .menu-stats-banner,
+.menu-panel--codex .wallet-chip {
+  display: none;
+}
+
+/* Soften the redundant last-run row when present in codex layout */
+.menu-panel--codex .menu-last-run {
+  margin-top: 12px;
+  margin-bottom: 0;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: rgb(200 208 224 / 0.55);
+}
+
+/* Atmospheric vignette: deepen the corners so the editorial spread
+   reads like a page lit by a single candle. */
+.overlay--codex::before {
+  background:
+    radial-gradient(ellipse at 30% 40%, rgb(94 234 212 / 0.06) 0%, transparent 55%),
+    radial-gradient(circle at 80% 70%, rgb(139 92 246 / 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 60% 20%, rgb(255 51 95 / 0.04) 0%, transparent 35%),
+    radial-gradient(120% 80% at 50% 50%, transparent 55%, rgb(0 0 0 / 0.55) 100%);
+}
+
+/* Stagger reveal for the new editorial chrome */
+@keyframes codex-reveal {
+  from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0);   filter: blur(0); }
+}
+
+.overlay--codex .ritual-line,
+.overlay--codex .codex-rail,
+.overlay--codex .codex-rail--right {
+  animation: codex-reveal 1100ms cubic-bezier(0.2, 0.7, 0.1, 1) both;
+}
+.overlay--codex .codex-rail { animation-delay: 220ms; }
+.overlay--codex .codex-rail--right { animation-delay: 360ms; }
+.overlay--codex .ritual-line { animation-delay: 120ms; }
+
+/* Responsive: collapse the editorial spread on narrow viewports. */
+@media (max-width: 1100px) {
+  .overlay--codex {
+    place-items: center;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  .codex-rail,
+  .codex-rail--right {
+    display: none;
+  }
+  .eclipse-motif--codex {
+    top: 8%;
+    right: 50%;
+    transform: translate(50%, 0);
+    width: clamp(220px, 60vmin, 380px);
+    opacity: 0.45;
+    z-index: 0;
+  }
+  .menu-panel--codex {
+    width: min(560px, 100%);
+    margin-top: 18vh;
+  }
+  .ritual-line { opacity: 0.35; }
+}
+
+@media (max-width: 640px) {
+  .menu-title {
+    font-size: clamp(46px, 12vw, 72px);
+    max-width: none;
+  }
+  .almanac-strip {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 10px;
+  }
+  .almanac-cell + .almanac-cell:nth-child(odd)::before {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eclipse-diagram .ed-ring--outer,
+  .eclipse-diagram .ed-ring--mid,
+  .eclipse-diagram .ed-sigils,
+  .eclipse-diagram .ed-crosshair,
+  .eclipse-diagram .ed-corona-pulse,
+  .eclipse-diagram .ed-beads circle,
+  .ritual-line,
+  .ritual-line__sigil,
+  .almanac-shard-glyph {
+    animation: none;
+  }
+}

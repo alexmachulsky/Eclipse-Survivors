@@ -206,7 +206,7 @@ export function GameCanvas({ onReady, onSnapshot }: GameCanvasProps) {
 
   return (
     <>
-      <canvas ref={canvasRef} className="game-canvas" aria-label="Eclipse Survivors playfield" />
+      <canvas ref={canvasRef} className="game-canvas" aria-label="Space Raiders playfield" />
       {debugEnabled && <FpsOverlay metrics={perfSummary} fast={fastMode} />}
     </>
   );

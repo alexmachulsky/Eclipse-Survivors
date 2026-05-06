@@ -4,7 +4,7 @@ import type { PlayerRuntime, Weapon } from '../game/types';
 import { loadRunHistory, type RunHistory } from '../game/persistence';
 import { loadWallet, type Wallet } from '../game/wallet';
 import { WeaponTile } from './Hud';
-import { AreaPulseIcon, ClockIcon, MagicBoltIcon, OrbitIcon, PiercingArrowIcon, SkullIcon, StarIcon, WeaponIconMap } from './icons';
+import { AreaPulseIcon, MagicBoltIcon, OrbitIcon, PiercingArrowIcon, WeaponIconMap } from './icons';
 
 interface MenuProps {
   onStart: () => void;
@@ -54,6 +54,109 @@ function useCountUp(target: number, duration = 700): number {
   return value;
 }
 
+function EclipseDiagram() {
+  return (
+    <svg className="eclipse-diagram" viewBox="0 0 400 400" aria-hidden="true">
+      <defs>
+        <radialGradient id="ed-corona" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgb(255 209 102 / 0.0)" />
+          <stop offset="42%" stopColor="rgb(255 209 102 / 0.0)" />
+          <stop offset="55%" stopColor="rgb(255 209 102 / 0.55)" />
+          <stop offset="62%" stopColor="rgb(255 138 61 / 0.18)" />
+          <stop offset="78%" stopColor="rgb(139 92 246 / 0.10)" />
+          <stop offset="100%" stopColor="rgb(2 3 10 / 0)" />
+        </radialGradient>
+        <radialGradient id="ed-disc" cx="38%" cy="36%" r="80%">
+          <stop offset="0%" stopColor="#1c1641" />
+          <stop offset="55%" stopColor="#08071a" />
+          <stop offset="100%" stopColor="#02020a" />
+        </radialGradient>
+        <radialGradient id="ed-bead" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgb(255 247 220 / 1)" />
+          <stop offset="40%" stopColor="rgb(255 209 102 / 0.7)" />
+          <stop offset="100%" stopColor="rgb(255 209 102 / 0)" />
+        </radialGradient>
+        <filter id="ed-soft" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="2.4" />
+        </filter>
+      </defs>
+
+      {/* outermost zodiac ring with degree ticks */}
+      <g className="ed-ring ed-ring--outer">
+        <circle cx="200" cy="200" r="194" fill="none" stroke="rgb(212 175 55 / 0.32)" strokeWidth="0.5" />
+        <circle cx="200" cy="200" r="186" fill="none" stroke="rgb(212 175 55 / 0.18)" strokeWidth="0.5" strokeDasharray="1 7" />
+        {Array.from({ length: 72 }).map((_, i) => {
+          const long = i % 6 === 0;
+          const a = (i * 5 * Math.PI) / 180;
+          const r1 = 186;
+          const r2 = long ? 174 : 180;
+          const x1 = 200 + Math.cos(a) * r1;
+          const y1 = 200 + Math.sin(a) * r1;
+          const x2 = 200 + Math.cos(a) * r2;
+          const y2 = 200 + Math.sin(a) * r2;
+          return (
+            <line
+              key={i}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={long ? 'rgb(212 175 55 / 0.7)' : 'rgb(212 175 55 / 0.32)'}
+              strokeWidth={long ? 0.8 : 0.4}
+            />
+          );
+        })}
+      </g>
+
+      {/* cardinal sigils */}
+      <g className="ed-sigils">
+        <text x="200" y="32" textAnchor="middle" fontSize="14" fill="rgb(241 215 122 / 0.9)" fontFamily="serif">☉</text>
+        <text x="368" y="206" textAnchor="middle" fontSize="14" fill="rgb(241 215 122 / 0.9)" fontFamily="serif">☽</text>
+        <text x="200" y="378" textAnchor="middle" fontSize="14" fill="rgb(241 215 122 / 0.9)" fontFamily="serif">⚸</text>
+        <text x="32" y="206" textAnchor="middle" fontSize="14" fill="rgb(241 215 122 / 0.9)" fontFamily="serif">✦</text>
+      </g>
+
+      {/* mid declination ring (counter-rotates) */}
+      <g className="ed-ring ed-ring--mid">
+        <circle cx="200" cy="200" r="156" fill="none" stroke="rgb(212 175 55 / 0.2)" strokeWidth="0.5" strokeDasharray="2 4" />
+        <circle cx="200" cy="200" r="148" fill="none" stroke="rgb(212 175 55 / 0.12)" strokeWidth="0.5" />
+      </g>
+
+      {/* corona glow */}
+      <circle cx="200" cy="200" r="180" fill="url(#ed-corona)" filter="url(#ed-soft)" className="ed-corona-pulse" />
+
+      {/* halo gold ring around disc */}
+      <circle cx="200" cy="200" r="106" fill="none" stroke="rgb(212 175 55 / 0.95)" strokeWidth="0.7" />
+      <circle cx="200" cy="200" r="110" fill="none" stroke="rgb(212 175 55 / 0.18)" strokeWidth="3" />
+
+      {/* eclipsed disc */}
+      <circle cx="200" cy="200" r="104" fill="url(#ed-disc)" />
+      {/* inner shadow line */}
+      <circle cx="200" cy="200" r="100" fill="none" stroke="rgb(0 0 0 / 0.6)" strokeWidth="6" />
+
+      {/* bailey's beads */}
+      <g className="ed-beads">
+        <circle cx="296" cy="138" r="3" fill="url(#ed-bead)" />
+        <circle cx="118" cy="266" r="2.4" fill="url(#ed-bead)" />
+        <circle cx="266" cy="288" r="2" fill="url(#ed-bead)" />
+        <circle cx="138" cy="118" r="1.8" fill="url(#ed-bead)" />
+      </g>
+
+      {/* central crosshair sigil (rotates) */}
+      <g className="ed-crosshair">
+        <line x1="200" y1="186" x2="200" y2="214" stroke="rgb(241 215 122 / 0.8)" strokeWidth="0.6" />
+        <line x1="186" y1="200" x2="214" y2="200" stroke="rgb(241 215 122 / 0.8)" strokeWidth="0.6" />
+        <circle cx="200" cy="200" r="6" fill="none" stroke="rgb(241 215 122 / 0.8)" strokeWidth="0.6" />
+        <circle cx="200" cy="200" r="1.2" fill="rgb(241 215 122 / 0.95)" />
+      </g>
+
+      {/* declination lines crossing through */}
+      <line x1="200" y1="6" x2="200" y2="394" stroke="rgb(212 175 55 / 0.08)" strokeWidth="0.5" strokeDasharray="2 6" />
+      <line x1="6" y1="200" x2="394" y2="200" stroke="rgb(212 175 55 / 0.08)" strokeWidth="0.5" strokeDasharray="2 6" />
+    </svg>
+  );
+}
+
 export function MainMenu({ onStart, onLanStart }: MenuProps) {
   const [history, setHistory] = useState<RunHistory | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
@@ -65,51 +168,91 @@ export function MainMenu({ onStart, onLanStart }: MenuProps) {
 
   const best = history?.best ?? null;
   const last = history?.last ?? null;
+  const showShards = wallet && wallet.lifetimeEarned > 0;
 
   return (
-    <div className="overlay overlay--menu">
-      <div className="eclipse-motif" aria-hidden="true">
-        <div className="eclipse-corona" />
-        <div className="eclipse-disc" />
+    <div className="overlay overlay--menu overlay--codex">
+      <div className="ritual-line" aria-hidden="true">
+        <span className="ritual-line__sigil">☉</span>
       </div>
-      <div className="panel menu-panel">
-        <p className="eyebrow">Eclipse Survivors</p>
-        <h1>Hold the ritual line</h1>
+      <div className="codex-rail" aria-hidden="true">
+        <span>MMXXVI</span>
+        <span className="codex-rail__sep">✦</span>
+        <span>Space Raiders</span>
+        <span className="codex-rail__sep">✦</span>
+        <span>Log I</span>
+      </div>
+      <div className="codex-rail codex-rail--right" aria-hidden="true">
+        <span>A pilot's log from the outer reaches</span>
+      </div>
+
+      <div className="eclipse-motif eclipse-motif--codex" aria-hidden="true">
+        <EclipseDiagram />
+      </div>
+
+      <div className="panel menu-panel menu-panel--codex">
+        <span className="sigil-corner sigil-corner--tl" aria-hidden="true">
+          <svg viewBox="0 0 40 40" width="40" height="40"><path d="M2 2 L18 2 M2 2 L2 18 M2 2 L14 14" stroke="rgb(212 175 55 / 0.55)" strokeWidth="0.6" fill="none"/><circle cx="2" cy="2" r="1.4" fill="rgb(212 175 55 / 0.8)"/></svg>
+        </span>
+        <span className="sigil-corner sigil-corner--br" aria-hidden="true">
+          <svg viewBox="0 0 40 40" width="40" height="40"><path d="M38 38 L22 38 M38 38 L38 22 M38 38 L26 26" stroke="rgb(212 175 55 / 0.55)" strokeWidth="0.6" fill="none"/><circle cx="38" cy="38" r="1.4" fill="rgb(212 175 55 / 0.8)"/></svg>
+        </span>
+
+        <p className="eyebrow">Space Raiders</p>
+        <h1 className="menu-title">
+          Hold the
+          <em> last </em>
+          line
+        </h1>
         <p className="menu-copy">
-          Survive the eclipse arena, gather power, and break the final threat.
+          Survive the void, gather power, and break the final threat.
         </p>
-        {best && (
-          <div className="menu-stats-banner">
-            <ClockIcon size={13} color="var(--c-rare)" />
-            <span>Best <strong>{formatTime(best.timeSurvived)}</strong></span>
-            <span className="menu-stats-sep">·</span>
-            <SkullIcon size={13} color="var(--c-rare)" />
-            <strong>{best.kills}</strong>
-            <span className="menu-stats-sep">·</span>
-            <StarIcon size={13} color="var(--c-rare)" />
-            <strong>lv.{best.level}</strong>
+
+        <div className="almanac-strip" role="group" aria-label="Almanac">
+          <div className="almanac-cell">
+            <span className="almanac-cell__label">Best Vigil</span>
+            <strong className="almanac-cell__value">{best ? formatTime(best.timeSurvived) : '—'}</strong>
           </div>
-        )}
+          <div className="almanac-cell">
+            <span className="almanac-cell__label">Tally</span>
+            <strong className="almanac-cell__value">{best ? best.kills.toLocaleString() : '—'}</strong>
+          </div>
+          <div className="almanac-cell">
+            <span className="almanac-cell__label">Echelon</span>
+            <strong className="almanac-cell__value">{best ? `lv.${best.level}` : '—'}</strong>
+          </div>
+          {showShards && (
+            <div className="almanac-cell almanac-cell--shards" aria-label="Star Shards balance">
+              <span className="almanac-cell__label">Shards</span>
+              <strong className="almanac-cell__value">
+                <span className="almanac-shard-glyph" aria-hidden="true">◆</span>
+                {wallet!.shards.toLocaleString()}
+              </strong>
+            </div>
+          )}
+        </div>
+
         {last && (
           <div className="menu-last-run">
             Last run · {formatTime(last.timeSurvived)} · lv.{last.level} · {last.kills} kills
             {last.weaponPath.length > 0 && ` · ${last.weaponPath.slice(0, 3).join(' → ')}`}
           </div>
         )}
-        {wallet && wallet.lifetimeEarned > 0 && (
-          <div className="wallet-chip" aria-label="Eclipse Shards balance">
-            <span className="wallet-chip__gem" aria-hidden="true">◆</span>
-            <span><strong>{wallet.shards.toLocaleString()}</strong> shards</span>
-          </div>
-        )}
+
         <div className="button-row">
-          <button className="primary-button btn--primary-large" type="button" onClick={onStart}>
-            Begin Solo Run
+          <button className="primary-button btn--primary-large btn--ritual" type="button" onClick={onStart}>
+            <span className="btn-glyph" aria-hidden="true">☉</span>
+            <span className="btn-label">Begin Solo Run</span>
+            <span className="btn-flourish" aria-hidden="true">→</span>
           </button>
+          <div className="button-divider" aria-hidden="true">
+            <span>or</span>
+          </div>
           <button className="secondary-button" type="button" onClick={onLanStart}>
             LAN Multiplayer
           </button>
         </div>
+
         <div className="menu-arsenal" aria-label="Available weapons">
           <span className="menu-arsenal-label">Arsenal</span>
           <div className="menu-arsenal-icons">
@@ -448,7 +591,7 @@ export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps
   const visiblePath = dedupedPath.slice(0, 6);
 
   const panelClassname = `panel end-panel ${victory ? 'end-panel--victory' : 'end-panel--defeat'}`;
-  const headerText = victory ? 'The eclipse breaks' : 'The eclipse claims you';
+  const headerText = victory ? 'The void breaks' : 'The void claims you';
 
   return (
     <div className="overlay">
@@ -483,7 +626,7 @@ export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps
         )}
         {snapshot.lastRunReward > 0 && (
           <p className="end-screen-reward">
-            Earned <strong>+{snapshot.lastRunReward}</strong> Eclipse Shards
+            Earned <strong>+{snapshot.lastRunReward}</strong> Star Shards
           </p>
         )}
         <button className="primary-button btn--primary-large" type="button" onClick={onRestart}>

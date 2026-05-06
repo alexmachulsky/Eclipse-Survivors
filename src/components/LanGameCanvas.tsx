@@ -377,7 +377,7 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
 
   return (
     <>
-      <canvas ref={canvasRef} className="game-canvas" aria-label="Eclipse Survivors LAN playfield" />
+      <canvas ref={canvasRef} className="game-canvas" aria-label="Space Raiders LAN playfield" />
       {debugEnabled && <FpsOverlay metrics={perfSummary} fast={fastMode} />}
     </>
   );
