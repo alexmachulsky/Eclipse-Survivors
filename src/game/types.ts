@@ -27,6 +27,21 @@ export interface InputState extends MovementInput {
   mouseWorld: Vector;
 }
 
+export interface DashState {
+  charges: number;
+  maxCharges: number;
+  rechargeRemaining: number;
+  rechargeDuration: number;
+  active: boolean;
+  activeRemaining: number;
+  invulnRemaining: number;
+  dirX: number;
+  dirY: number;
+  speed: number;
+  hitIds: string[];
+  queued: boolean;
+}
+
 export interface Player {
   position: Vector;
   radius: number;
@@ -41,6 +56,10 @@ export interface Player {
   projectileSpeedMultiplier: number;
   invulnerableTimer: number;
   facingAngle: number;
+  dash: DashState;
+  dashDamageMult: number;
+  dashRechargeMult: number;
+  dashChargeBonus: number;
 }
 
 export type EnemyType = 'basic' | 'fast' | 'tank' | 'ranged' | 'boss';
@@ -287,6 +306,7 @@ export interface PlayerCommand {
   aimWorldX: number;
   aimWorldY: number;
   reviveHeld: boolean;
+  dashHeld: boolean;
 }
 
 export interface MultiplayerGameState extends Omit<GameState, 'player' | 'weapons' | 'upgradeChoices' | 'pendingChestChoices' | 'level' | 'xp' | 'xpToNext' | 'stats'> {
