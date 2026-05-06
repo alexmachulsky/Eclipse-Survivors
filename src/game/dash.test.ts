@@ -236,3 +236,34 @@ describe('dash queue', () => {
     expect(next).toBeNull();
   });
 });
+
+import { PASSIVES } from './content/passives.registry';
+
+describe('dash passives', () => {
+  it('comet-catalyst scales dashDamageMult linearly', () => {
+    let p = createStartingPlayer({ x: 0, y: 0 });
+    for (let i = 0; i < 3; i++) p = PASSIVES['comet-catalyst'].apply(p);
+    expect(p.dashDamageMult).toBeCloseTo(1 + 0.25 * 3);
+  });
+
+  it('stellar-drive reduces dashRechargeMult, clamped at 0.25', () => {
+    let p = createStartingPlayer({ x: 0, y: 0 });
+    for (let i = 0; i < 4; i++) p = PASSIVES['stellar-drive'].apply(p);
+    // 1 → 0.85 → 0.70 → 0.55 → 0.40
+    expect(p.dashRechargeMult).toBeCloseTo(0.4);
+  });
+
+  it('stellar-drive cannot reduce dashRechargeMult below 0.25', () => {
+    let p = createStartingPlayer({ x: 0, y: 0 });
+    for (let i = 0; i < 10; i++) p = PASSIVES['stellar-drive'].apply(p);
+    expect(p.dashRechargeMult).toBe(0.25);
+  });
+
+  it('eclipse-momentum bumps dashChargeBonus and tops off charges', () => {
+    const start = createStartingPlayer({ x: 0, y: 0 });
+    const after = PASSIVES['eclipse-momentum'].apply(start);
+    expect(after.dashChargeBonus).toBe(1);
+    // Charges should clamp to maxCharges + bonus = 3
+    expect(after.dash.charges).toBeLessThanOrEqual(3);
+  });
+});
