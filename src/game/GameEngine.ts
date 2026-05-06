@@ -94,6 +94,9 @@ export class GameEngine {
   private glowScale = 1;
   private performanceMode = false;
   private fastRender = false;
+  private dashTrail: Array<{ x: number; y: number; t: number }> = [];
+  private dashHitPulseCounter = 0;
+  private static readonly DASH_TRAIL_LIFE = 0.25;
 
   constructor(rng: () => number = Math.random) {
     this.rng = rng;
@@ -231,7 +234,12 @@ export class GameEngine {
       return;
     }
     const next = startDash(player, dx, dy);
-    if (next) this.state.player = next;
+    if (next) {
+      const flareX = player.position.x;
+      const flareY = player.position.y;
+      this.state.player = next;
+      this.spawnDashHitPulse(flareX, flareY);
+    }
   }
 
   selectUpgrade(upgradeId: string): void {
@@ -348,6 +356,13 @@ export class GameEngine {
     this.state.player = tickDashCooldown(this.state.player, scaledDt);
     const dashMotion = tickDashMotion(this.state.player, scaledDt);
     this.state.player = dashMotion.player;
+    // Trail sampling — push while active, age every frame, drop expired
+    if (this.state.player.dash.active) {
+      this.dashTrail.push({ x: this.state.player.position.x, y: this.state.player.position.y, t: 0 });
+      if (this.dashTrail.length > 10) this.dashTrail.shift();
+    }
+    for (const sample of this.dashTrail) sample.t += scaledDt;
+    this.dashTrail = this.dashTrail.filter((s) => s.t < GameEngine.DASH_TRAIL_LIFE);
     if (dashMotion.segment) {
       const dashHits = resolveDashHits(dashMotion.segment, this.state.enemies, this.state.player);
       if (dashHits.hits.length > 0) {
@@ -366,6 +381,7 @@ export class GameEngine {
             maxLife: 0.55,
             color: '#a8f3ff'
           });
+          this.spawnDashHitPulse(hit.hitX, hit.hitY);
         }
         this.state.player = {
           ...this.state.player,
@@ -431,6 +447,7 @@ export class GameEngine {
     this.drawTelegraphs(ctx, viewport);
     this.drawProjectiles(ctx, this.state.playerProjectiles, viewport);
     this.drawProjectiles(ctx, this.state.enemyProjectiles, viewport);
+    this.drawDashTrail(ctx);
     this.drawEnemies(ctx, viewport);
     this.drawOrbitWeapon(ctx);
     this.drawPlayer(ctx);
@@ -1280,6 +1297,20 @@ export class GameEngine {
     }
 
     this.state.damageTexts.push(text);
+  }
+
+  private spawnDashHitPulse(x: number, y: number): void {
+    this.dashHitPulseCounter += 1;
+    if (this.state.particles.length >= MAX_PARTICLES) return;
+    this.state.particles.push({
+      id: `dash-pulse-${this.state.elapsed.toFixed(3)}-${this.dashHitPulseCounter}`,
+      position: { x, y },
+      velocity: { x: 0, y: 0 },
+      radius: 18,
+      color: '#ffffff',
+      life: 0.18,
+      maxLife: 0.18
+    });
   }
 
   private addTelegraph(telegraph: Telegraph): void {
@@ -2228,6 +2259,29 @@ export class GameEngine {
       ctx.stroke();
     }
 
+    ctx.restore();
+  }
+
+  private drawDashTrail(ctx: CanvasRenderingContext2D): void {
+    if (this.fastRender || this.dashTrail.length === 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const s of this.dashTrail) {
+      const lifeRatio = 1 - s.t / GameEngine.DASH_TRAIL_LIFE;
+      if (lifeRatio <= 0) continue;
+      const radius = 12 * lifeRatio + 4;
+      const alpha = 0.7 * lifeRatio;
+      const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, radius);
+      grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      grad.addColorStop(0.5, `rgba(168, 243, 255, ${alpha * 0.6})`);
+      grad.addColorStop(1, `rgba(212, 84, 255, 0)`);
+      ctx.fillStyle = grad;
+      ctx.shadowBlur = 16 * this.glowScale;
+      ctx.shadowColor = '#a8f3ff';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
