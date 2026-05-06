@@ -143,3 +143,58 @@ describe('tickDashMotion', () => {
     expect(result.segment).toBeNull();
   });
 });
+
+import { resolveDashHits } from './dash';
+import type { Enemy } from './types';
+
+function makeEnemy(id: string, x: number, y: number, r = 14): Enemy {
+  return {
+    id,
+    type: 'basic',
+    rank: 'normal',
+    position: { x, y },
+    velocity: { x: 0, y: 0 },
+    radius: r,
+    maxHealth: 22,
+    health: 22,
+    speed: 0,
+    damage: 0,
+    xpValue: 1,
+    color: '#fff',
+    cooldown: 0,
+    hitFlash: 0
+  };
+}
+
+describe('resolveDashHits', () => {
+  it('hits all enemies whose hit-circle overlaps the dash segment', () => {
+    const segment = { x0: 0, y0: 0, x1: 200, y1: 0 };
+    const enemies: Enemy[] = [
+      makeEnemy('a', 50, 0),
+      makeEnemy('b', 100, 12),
+      makeEnemy('c', 180, -5),
+      makeEnemy('d', 220, 100) // far away
+    ];
+    const player = createStartingPlayer({ x: 0, y: 0 });
+    const result = resolveDashHits(segment, enemies, player);
+    expect(result.hits.map((h) => h.enemyId).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('skips enemies whose ids are already in player.dash.hitIds', () => {
+    const segment = { x0: 0, y0: 0, x1: 200, y1: 0 };
+    const enemies = [makeEnemy('a', 50, 0), makeEnemy('b', 150, 0)];
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const dashing = { ...p, dash: { ...p.dash, hitIds: ['a'] } };
+    const result = resolveDashHits(segment, enemies, dashing);
+    expect(result.hits.map((h) => h.enemyId)).toEqual(['b']);
+    expect(result.updatedHitIds.sort()).toEqual(['a', 'b']);
+  });
+
+  it('damage = (baseDamage) * damageMultiplier * dashDamageMult', () => {
+    const segment = { x0: 0, y0: 0, x1: 100, y1: 0 };
+    const enemies = [makeEnemy('a', 50, 0)];
+    const p = { ...createStartingPlayer({ x: 0, y: 0 }), damageMultiplier: 2, dashDamageMult: 1.5 };
+    const result = resolveDashHits(segment, enemies, p);
+    expect(result.hits[0].damage).toBeCloseTo(28 * 2 * 1.5);
+  });
+});

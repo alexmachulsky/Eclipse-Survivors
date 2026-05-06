@@ -1,4 +1,4 @@
-import type { Player } from './types';
+import type { Player, Enemy } from './types';
 
 export const DASH_CONFIG = {
   baseDamage: 28,
@@ -114,4 +114,53 @@ export function tickDashMotion(
     },
     segment: { x0, y0, x1, y1 }
   };
+}
+
+export interface DashHit {
+  enemyId: string;
+  damage: number;
+  hitX: number;
+  hitY: number;
+}
+
+// Squared distance from point (px,py) to segment (x0,y0)-(x1,y1)
+function pointToSegmentSq(px: number, py: number, x0: number, y0: number, x1: number, y1: number): number {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    const ex = px - x0; const ey = py - y0;
+    return ex * ex + ey * ey;
+  }
+  let t = ((px - x0) * dx + (py - y0) * dy) / lenSq;
+  if (t < 0) t = 0; else if (t > 1) t = 1;
+  const cx = x0 + t * dx;
+  const cy = y0 + t * dy;
+  const ex = px - cx; const ey = py - cy;
+  return ex * ex + ey * ey;
+}
+
+export function resolveDashHits(
+  segment: DashSegment,
+  enemies: readonly Enemy[],
+  player: Player
+): { hits: DashHit[]; updatedHitIds: string[] } {
+  const hits: DashHit[] = [];
+  const already = new Set(player.dash.hitIds);
+  const baseDamage = DASH_CONFIG.baseDamage * player.damageMultiplier * (player.dashDamageMult ?? 1);
+  // Use player radius as a generous cushion so the comet "feels" like it brushes enemies
+  const playerR = player.radius * 0.5;
+  for (const e of enemies) {
+    if (already.has(e.id)) continue;
+    const reach = e.radius + playerR;
+    const distSq = pointToSegmentSq(
+      e.position.x, e.position.y,
+      segment.x0, segment.y0, segment.x1, segment.y1
+    );
+    if (distSq <= reach * reach) {
+      hits.push({ enemyId: e.id, damage: baseDamage, hitX: e.position.x, hitY: e.position.y });
+      already.add(e.id);
+    }
+  }
+  return { hits, updatedHitIds: Array.from(already) };
 }
