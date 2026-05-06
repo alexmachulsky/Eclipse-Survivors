@@ -1,6 +1,14 @@
 import { angleTo, circlesOverlapSq, clamp, vectorFromAngle } from './collisions';
 import { buildCosmicLayers, drawCosmicBackground, drawTwinkleStars, type CosmicLayers } from './cosmic';
 import { RUN_LENGTH_SECONDS } from './content';
+import {
+  startDash,
+  tickDashCooldown,
+  tickDashMotion,
+  resolveDashHits,
+  tryQueueDash,
+  consumeDashQueue
+} from './dash';
 import { chooseEnemyType, getBossSpawn, spawnEnemyOutsideViewport, updateEnemies } from './enemies';
 import { createDeathParticles, createXpGem, updateParticles } from './particles';
 import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
@@ -211,6 +219,21 @@ export class GameEngine {
     this.input.mouseWorld = this.screenToWorld(position);
   }
 
+  dash(): void {
+    if (this.state.phase !== 'playing') return;
+    // Block new dashes during boss-spawn cinematic
+    if (this.state.cinematicState) return;
+    const player = this.state.player;
+    const dx = this.input.mouseWorld.x - player.position.x;
+    const dy = this.input.mouseWorld.y - player.position.y;
+    if (player.dash.active) {
+      this.state.player = tryQueueDash(player);
+      return;
+    }
+    const next = startDash(player, dx, dy);
+    if (next) this.state.player = next;
+  }
+
   selectUpgrade(upgradeId: string): void {
     if (this.state.phase !== 'levelUp' && this.state.phase !== 'chestReward') {
       return;
@@ -319,6 +342,45 @@ export class GameEngine {
     this.state.screenShake = Math.max(0, this.state.screenShake - scaledDt * 24);
     this.input.mouseWorld = this.screenToWorld(this.input.mouse);
     this.updatePlayer(scaledDt);
+    // --- Dash mechanic ---
+    // Always tick (so in-progress dashes complete during cinematics, but new dashes
+    // are blocked in the dash() command above when cinematic is active).
+    this.state.player = tickDashCooldown(this.state.player, scaledDt);
+    const dashMotion = tickDashMotion(this.state.player, scaledDt);
+    this.state.player = dashMotion.player;
+    if (dashMotion.segment) {
+      const dashHits = resolveDashHits(dashMotion.segment, this.state.enemies, this.state.player);
+      if (dashHits.hits.length > 0) {
+        for (const hit of dashHits.hits) {
+          const enemy = this.state.enemies.find((e) => e.id === hit.enemyId);
+          if (!enemy) continue;
+          enemy.health = Math.max(0, enemy.health - hit.damage);
+          enemy.hitFlash = 0.12;
+          this.state.stats.damageDealt += hit.damage;
+          this.pushDamageText({
+            id: `dash-${enemy.id}-${this.state.elapsed}-${hit.damage}`,
+            position: { x: hit.hitX, y: hit.hitY - enemy.radius - 8 },
+            velocity: { x: 0, y: -42 },
+            amount: Math.round(hit.damage),
+            life: 0.55,
+            maxLife: 0.55,
+            color: '#a8f3ff'
+          });
+        }
+        this.state.player = {
+          ...this.state.player,
+          dash: { ...this.state.player.dash, hitIds: dashHits.updatedHitIds }
+        };
+        this.state.screenShake = Math.max(this.state.screenShake, 4);
+      }
+    }
+    // Consume queued dash on the frame the current one ends
+    if (!this.state.player.dash.active && this.state.player.dash.queued) {
+      const queueDx = this.input.mouseWorld.x - this.state.player.position.x;
+      const queueDy = this.input.mouseWorld.y - this.state.player.position.y;
+      const queued = consumeDashQueue(this.state.player, queueDx, queueDy);
+      if (queued) this.state.player = queued;
+    }
     this.processRunDirectorEvents(collectRunDirectorEvents(this.state.runDirector, previousElapsed, this.state.elapsed));
     this.updateObjectives(scaledDt);
 
