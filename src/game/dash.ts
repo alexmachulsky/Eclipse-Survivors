@@ -1,4 +1,4 @@
-import type { Player, Enemy } from './types';
+import type { Player } from './types';
 
 export const DASH_CONFIG = {
   baseDamage: 28,
