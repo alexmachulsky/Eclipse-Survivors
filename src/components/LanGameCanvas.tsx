@@ -285,6 +285,7 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
             reviveHeld: k2.reviveHeld,
             dashHeld: k2.dashHeld
           });
+          keysRef.current.dashHeld = false;
           seqRef.current += 1;
         }
       }
@@ -325,6 +326,13 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
       if (mapped) {
         keysRef.current[mapped] = true;
         if (!isTyping) event.preventDefault();
+      }
+
+      if (event.code === 'Space' && !isTyping) {
+        if (!event.repeat) {
+          keysRef.current.dashHeld = true;
+        }
+        event.preventDefault();
       }
 
       if (event.code === 'KeyE' && !isTyping) {
