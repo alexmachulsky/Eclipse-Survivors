@@ -74,3 +74,44 @@ export function startDash(player: Player, dirX: number, dirY: number): Player | 
     }
   };
 }
+
+export interface DashSegment {
+  x0: number; y0: number; x1: number; y1: number;
+}
+
+export function tickDashMotion(
+  player: Player,
+  dt: number
+): { player: Player; segment: DashSegment | null } {
+  if (!player.dash.active) {
+    if (player.dash.invulnRemaining > 0) {
+      const inv = Math.max(0, player.dash.invulnRemaining - dt);
+      return { player: { ...player, dash: { ...player.dash, invulnRemaining: inv } }, segment: null };
+    }
+    return { player, segment: null };
+  }
+  const remaining = player.dash.activeRemaining;
+  const step = Math.min(dt, remaining);
+  const dx = player.dash.dirX * player.dash.speed * step;
+  const dy = player.dash.dirY * player.dash.speed * step;
+  const x0 = player.position.x;
+  const y0 = player.position.y;
+  const x1 = x0 + dx;
+  const y1 = y0 + dy;
+  const stillActive = remaining - step > 1e-6;
+  const newRemaining = stillActive ? remaining - step : 0;
+  const newInvuln = Math.max(0, player.dash.invulnRemaining - dt);
+  return {
+    player: {
+      ...player,
+      position: { x: x1, y: y1 },
+      dash: {
+        ...player.dash,
+        active: stillActive,
+        activeRemaining: newRemaining,
+        invulnRemaining: newInvuln
+      }
+    },
+    segment: { x0, y0, x1, y1 }
+  };
+}

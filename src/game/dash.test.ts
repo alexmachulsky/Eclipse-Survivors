@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createStartingPlayer } from './state';
-import { tickDashCooldown, startDash } from './dash';
+import { tickDashCooldown, startDash, tickDashMotion } from './dash';
 
 describe('dash cooldown', () => {
   it('does nothing when charges are full', () => {
@@ -100,5 +100,46 @@ describe('startDash', () => {
     const next = startDash(partial, 1, 0);
     expect(next!.dash.charges).toBe(0);
     expect(next!.dash.rechargeRemaining).toBeCloseTo(1.0);
+  });
+});
+
+describe('tickDashMotion', () => {
+  it('moves player by dirX/Y * speed * dt while active and returns the segment', () => {
+    const p = createStartingPlayer({ x: 100, y: 200 });
+    const dashing = startDash(p, 1, 0)!;
+    const result = tickDashMotion(dashing, 0.05);
+    expect(result.player.position.x).toBeCloseTo(100 + 1220 * 0.05);
+    expect(result.player.position.y).toBe(200);
+    expect(result.segment).not.toBeNull();
+    expect(result.segment!.x0).toBe(100);
+    expect(result.segment!.x1).toBeCloseTo(100 + 1220 * 0.05);
+    expect(result.player.dash.activeRemaining).toBeCloseTo(0.18 - 0.05);
+  });
+
+  it('ends the dash when activeRemaining reaches zero, keeping invuln tail running', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const dashing = startDash(p, 1, 0)!;
+    const result = tickDashMotion(dashing, 0.18);
+    expect(result.player.dash.active).toBe(false);
+    expect(result.player.dash.activeRemaining).toBe(0);
+    // Invuln runs full duration (0.24) in parallel; 0.18 elapsed → 0.06 left
+    expect(result.player.dash.invulnRemaining).toBeCloseTo(0.06);
+  });
+
+  it('returns null segment and no movement when not active', () => {
+    const p = createStartingPlayer({ x: 50, y: 50 });
+    const result = tickDashMotion(p, 0.05);
+    expect(result.segment).toBeNull();
+    expect(result.player.position.x).toBe(50);
+    // Invuln still ticks if positive
+    expect(result.player.dash.invulnRemaining).toBe(0);
+  });
+
+  it('decays invuln remaining for non-active player', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const tail = { ...p, dash: { ...p.dash, active: false, activeRemaining: 0, invulnRemaining: 0.04 } };
+    const result = tickDashMotion(tail, 0.03);
+    expect(result.player.dash.invulnRemaining).toBeCloseTo(0.01);
+    expect(result.segment).toBeNull();
   });
 });
