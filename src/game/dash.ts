@@ -45,3 +45,32 @@ export function tickDashCooldown(player: Player, dt: number): Player {
   }
   return { ...player, dash: { ...player.dash, charges, rechargeRemaining: remaining } };
 }
+
+export function startDash(player: Player, dirX: number, dirY: number): Player | null {
+  if (player.dash.charges <= 0) return null;
+  if (player.dash.active) return null;
+  const len = Math.hypot(dirX, dirY);
+  if (len === 0 || !Number.isFinite(len)) return null;
+  const nx = dirX / len;
+  const ny = dirY / len;
+  const charges = player.dash.charges - 1;
+  // Start recharge timer only if it's not already running
+  const rechargeRemaining = player.dash.rechargeRemaining > 0
+    ? player.dash.rechargeRemaining
+    : effectiveRecharge(player);
+  return {
+    ...player,
+    dash: {
+      ...player.dash,
+      charges,
+      rechargeRemaining,
+      active: true,
+      activeRemaining: DASH_CONFIG.baseDuration,
+      invulnRemaining: DASH_CONFIG.baseDuration + DASH_CONFIG.invulnTail,
+      dirX: nx,
+      dirY: ny,
+      hitIds: [],
+      queued: false
+    }
+  };
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createStartingPlayer } from './state';
-import { tickDashCooldown } from './dash';
+import { tickDashCooldown, startDash } from './dash';
 
 describe('dash cooldown', () => {
   it('does nothing when charges are full', () => {
@@ -54,5 +54,51 @@ describe('dash cooldown', () => {
     const next = tickDashCooldown(buffed, 1.25);
     expect(next.dash.charges).toBe(2);
     expect(next.dash.rechargeRemaining).toBe(0);
+  });
+});
+
+describe('startDash', () => {
+  it('returns null when charges are zero', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const empty = { ...p, dash: { ...p.dash, charges: 0 } };
+    expect(startDash(empty, 1, 0)).toBeNull();
+  });
+
+  it('returns null on zero direction vector', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    expect(startDash(p, 0, 0)).toBeNull();
+  });
+
+  it('returns null when already dashing', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const mid = { ...p, dash: { ...p.dash, active: true, activeRemaining: 0.1 } };
+    expect(startDash(mid, 1, 0)).toBeNull();
+  });
+
+  it('consumes one charge and starts dash with normalized direction', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const next = startDash(p, 3, 4); // length 5
+    expect(next).not.toBeNull();
+    expect(next!.dash.charges).toBe(1);
+    expect(next!.dash.active).toBe(true);
+    expect(next!.dash.dirX).toBeCloseTo(0.6);
+    expect(next!.dash.dirY).toBeCloseTo(0.8);
+    expect(next!.dash.activeRemaining).toBeCloseTo(0.18);
+    expect(next!.dash.invulnRemaining).toBeCloseTo(0.18 + 0.06);
+    expect(next!.dash.hitIds).toEqual([]);
+  });
+
+  it('starts the recharge timer when going from full to one-below-max', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const next = startDash(p, 1, 0);
+    expect(next!.dash.rechargeRemaining).toBeCloseTo(2.5);
+  });
+
+  it('does not reset rechargeRemaining if already counting down', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const partial = { ...p, dash: { ...p.dash, charges: 1, rechargeRemaining: 1.0 } };
+    const next = startDash(partial, 1, 0);
+    expect(next!.dash.charges).toBe(0);
+    expect(next!.dash.rechargeRemaining).toBeCloseTo(1.0);
   });
 });
