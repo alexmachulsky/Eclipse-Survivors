@@ -164,3 +164,17 @@ export function resolveDashHits(
   }
   return { hits, updatedHitIds: Array.from(already) };
 }
+
+export function tryQueueDash(player: Player): Player {
+  if (!player.dash.active) return player;
+  if (player.dash.activeRemaining > DASH_CONFIG.queueWindow) return player;
+  if (player.dash.queued) return player;
+  return { ...player, dash: { ...player.dash, queued: true } };
+}
+
+export function consumeDashQueue(player: Player, dirX: number, dirY: number): Player | null {
+  if (!player.dash.queued) return null;
+  if (player.dash.active) return null;
+  if (player.dash.charges <= 0) return null;
+  return startDash(player, dirX, dirY);
+}

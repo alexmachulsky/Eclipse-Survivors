@@ -144,7 +144,7 @@ describe('tickDashMotion', () => {
   });
 });
 
-import { resolveDashHits } from './dash';
+import { tryQueueDash, consumeDashQueue, resolveDashHits } from './dash';
 import type { Enemy } from './types';
 
 function makeEnemy(id: string, x: number, y: number, r = 14): Enemy {
@@ -196,5 +196,43 @@ describe('resolveDashHits', () => {
     const p = { ...createStartingPlayer({ x: 0, y: 0 }), damageMultiplier: 2, dashDamageMult: 1.5 };
     const result = resolveDashHits(segment, enemies, p);
     expect(result.hits[0].damage).toBeCloseTo(28 * 2 * 1.5);
+  });
+});
+
+describe('dash queue', () => {
+  it('tryQueueDash sets queued when active and remaining ≤ queueWindow', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const tailEnd = { ...p, dash: { ...p.dash, active: true, activeRemaining: 0.05 } };
+    const next = tryQueueDash(tailEnd);
+    expect(next.dash.queued).toBe(true);
+  });
+
+  it('tryQueueDash does NOT queue if outside the window', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const midDash = { ...p, dash: { ...p.dash, active: true, activeRemaining: 0.15 } };
+    const next = tryQueueDash(midDash);
+    expect(next.dash.queued).toBe(false);
+  });
+
+  it('consumeDashQueue starts a new dash when queued + has charge + not active', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const ready = {
+      ...p,
+      dash: { ...p.dash, active: false, activeRemaining: 0, queued: true, charges: 1 }
+    };
+    const next = consumeDashQueue(ready, 1, 0);
+    expect(next).not.toBeNull();
+    expect(next!.dash.active).toBe(true);
+    expect(next!.dash.queued).toBe(false);
+  });
+
+  it('consumeDashQueue returns null and clears queue when no charge left', () => {
+    const p = createStartingPlayer({ x: 0, y: 0 });
+    const empty = {
+      ...p,
+      dash: { ...p.dash, active: false, queued: true, charges: 0 }
+    };
+    const next = consumeDashQueue(empty, 1, 0);
+    expect(next).toBeNull();
   });
 });
