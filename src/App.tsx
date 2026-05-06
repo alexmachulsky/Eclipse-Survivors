@@ -79,7 +79,13 @@ function createLocalSnapshot(serverSnapshot: ServerSnapshot | null): GameSnapsho
     agency: { rerolls: 0, banishes: 0, locks: 0, maxRerolls: 0, maxLocks: 0 },
     bannedUpgradeIds: [],
     lockedSlot: null,
-    lastRunReward: 0
+    lastRunReward: 0,
+    dash: {
+      charges: runtime?.player.dash.charges ?? 0,
+      maxCharges: (runtime?.player.dash.maxCharges ?? 0) + (runtime?.player.dashChargeBonus ?? 0),
+      rechargeRemaining: runtime?.player.dash.rechargeRemaining ?? 0,
+      rechargeDuration: (runtime?.player.dash.rechargeDuration ?? 0) * ((runtime?.player.dashRechargeMult) ?? 1)
+    }
   };
 }
 

@@ -33,6 +33,25 @@ export function WeaponTile({ weapon, isActive }: { weapon: Weapon; isActive: boo
   );
 }
 
+function DashPips({ dash }: { dash: GameSnapshot['dash'] }) {
+  const pips: React.ReactNode[] = [];
+  for (let i = 0; i < dash.maxCharges; i++) {
+    const filled = i < dash.charges;
+    const fillingNext = !filled && i === dash.charges;
+    const fillRatio = fillingNext
+      ? 1 - dash.rechargeRemaining / Math.max(0.0001, dash.rechargeDuration)
+      : 0;
+    pips.push(
+      <span
+        key={i}
+        className={`dash-pip ${filled ? 'is-filled' : ''} ${fillingNext ? 'is-filling' : ''}`}
+        style={fillingNext ? ({ ['--fill' as string]: `${fillRatio * 100}%` } as React.CSSProperties) : undefined}
+      />
+    );
+  }
+  return <div className="dash-pips" aria-label="Dash charges">{pips}</div>;
+}
+
 export function Hud({ snapshot, onPause }: HudProps) {
   const healthRatio = Math.max(0, snapshot.health / snapshot.maxHealth);
   const xpRatio = Math.max(0, Math.min(1, snapshot.xp / snapshot.xpToNext));
@@ -154,6 +173,9 @@ export function Hud({ snapshot, onPause }: HudProps) {
                 </div>
               </div>
             </Tooltip>
+            <div className="hud-bar-row hud-bar-row--dash">
+              <DashPips dash={snapshot.dash} />
+            </div>
             <Tooltip content={<><strong>Experience</strong>{snapshot.xp} / {snapshot.xpToNext} XP · Level {snapshot.level}<br/>Gain XP by killing enemies and completing rifts.</>}>
               <div className="hud-bar-row hud-bar-row--xp">
                 <span className="level-chip" aria-label={`Level ${snapshot.level}`}>{snapshot.level}</span>

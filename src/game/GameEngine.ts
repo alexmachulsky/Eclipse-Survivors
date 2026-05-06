@@ -58,6 +58,7 @@ export interface GameSnapshot {
   bannedUpgradeIds: string[];
   lockedSlot: number | null;
   lastRunReward: number;
+  dash: { charges: number; maxCharges: number; rechargeRemaining: number; rechargeDuration: number };
 }
 
 const MIN_SPAWN_INTERVAL = 0.26;
@@ -495,7 +496,13 @@ export class GameEngine {
       agency: { ...this.state.agency },
       bannedUpgradeIds: [...this.state.bannedUpgradeIds],
       lockedSlot: this.state.lockedSlot,
-      lastRunReward: this.state.lastRunReward
+      lastRunReward: this.state.lastRunReward,
+      dash: {
+        charges: this.state.player.dash.charges,
+        maxCharges: this.state.player.dash.maxCharges + this.state.player.dashChargeBonus,
+        rechargeRemaining: this.state.player.dash.rechargeRemaining,
+        rechargeDuration: this.state.player.dash.rechargeDuration * (this.state.player.dashRechargeMult ?? 1)
+      }
     };
   }
 

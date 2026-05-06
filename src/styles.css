@@ -325,6 +325,41 @@ button {
   letter-spacing: 0.02em;
 }
 
+/* ── Dash pips ── */
+.hud-bar-row--dash {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.dash-pips {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.dash-pip {
+  display: inline-block;
+  width: 11px; height: 11px;
+  transform: rotate(45deg);
+  background: rgba(168, 243, 255, 0.15);
+  border: 1px solid rgba(168, 243, 255, 0.4);
+  position: relative;
+  overflow: hidden;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.dash-pip.is-filled {
+  background: linear-gradient(135deg, #ffffff, #a8f3ff);
+  box-shadow: 0 0 8px rgba(168, 243, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.8);
+}
+.dash-pip.is-filling::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: var(--fill, 0%);
+  background: linear-gradient(0deg, rgba(168, 243, 255, 0.55), rgba(168, 243, 255, 0));
+}
+
 /* ── Weapon tiles ── */
 .hud-weapons-row {
   display: flex;
