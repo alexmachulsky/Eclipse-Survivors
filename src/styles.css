@@ -1007,6 +1007,17 @@ h2::after {
   }
 }
 
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .upgrade-card {
   min-height: auto;
   display: grid;
@@ -1022,68 +1033,82 @@ h2::after {
     rgb(15 23 42 / 86%);
   cursor: pointer;
   opacity: 0;
-  animation: boon-rise 220ms ease forwards;
-  animation-delay: calc(var(--idx, 0) * 80ms);
+  animation: card-in var(--dur-med) var(--ease-out) both;
+  animation-delay: calc(var(--idx, 0) * 60ms);
   transition:
     transform var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
 }
 
+.upgrade-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-2);
+}
+
+.upgrade-card:active {
+  transform: scale(0.98);
+}
+
 .upgrade-card--weapon {
-  border-color: rgb(255 209 102 / 30%);
+  border-color: var(--fx-accent);
+  border-width: 1.5px;
   background:
-    linear-gradient(160deg, rgb(255 209 102 / 10%), transparent 50%),
+    linear-gradient(160deg, rgb(255 209 102 / 12%), transparent 50%),
     rgb(15 23 42 / 86%);
+  box-shadow: inset 0 0 0 1px rgb(255 209 102 / 15%);
 }
 
 .upgrade-card--stat {
-  border-color: rgb(94 234 212 / 24%);
+  border-color: var(--fx-xp);
+  border-width: 1.5px;
+  background:
+    linear-gradient(160deg, rgb(94 234 212 / 8%), transparent 50%),
+    rgb(15 23 42 / 86%);
+  box-shadow: inset 0 0 0 1px rgb(94 234 212 / 12%);
 }
 
 .upgrade-card--passive {
-  border-color: rgb(139 92 246 / 34%);
+  border-color: var(--fx-arcane);
+  border-width: 1.5px;
   background:
-    linear-gradient(160deg, rgb(139 92 246 / 12%), transparent 50%),
+    linear-gradient(160deg, rgb(139 92 246 / 14%), transparent 50%),
     rgb(15 23 42 / 86%);
+  box-shadow: inset 0 0 0 1px rgb(139 92 246 / 16%);
 }
 
 .upgrade-card--evolution {
-  border-color: rgb(255 209 102 / 58%);
+  border-color: var(--fx-accent);
+  border-width: 2px;
   background:
-    linear-gradient(160deg, rgb(255 209 102 / 16%), transparent 44%),
-    linear-gradient(20deg, rgb(94 234 212 / 10%), transparent 58%),
+    linear-gradient(135deg, rgba(255, 209, 102, 0.1), rgba(212, 175, 55, 0.08)),
     rgb(15 23 42 / 90%);
+  box-shadow: 0 0 20px var(--glow-gold), inset 0 0 0 2px rgba(255, 209, 102, 0.2);
 }
 
-.upgrade-card:hover,
-.upgrade-card:focus-visible {
-  transform: translateY(-2px);
-  outline: none;
-}
 
 .upgrade-card--weapon:hover,
 .upgrade-card--weapon:focus-visible {
-  border-color: rgb(255 209 102 / 70%);
-  box-shadow: var(--shadow-pop);
+  border-color: var(--fx-accent);
+  box-shadow: 0 0 16px rgba(255, 209, 102, 0.35), inset 0 0 0 1px rgb(255 209 102 / 25%);
 }
 
 .upgrade-card--stat:hover,
 .upgrade-card--stat:focus-visible {
-  border-color: rgb(94 234 212 / 60%);
-  box-shadow: 0 18px 50px rgb(94 234 212 / 12%);
+  border-color: var(--fx-xp);
+  box-shadow: 0 0 16px rgba(94, 234, 212, 0.35), inset 0 0 0 1px rgb(94 234 212 / 20%);
 }
 
 .upgrade-card--passive:hover,
 .upgrade-card--passive:focus-visible {
-  border-color: rgb(139 92 246 / 72%);
-  box-shadow: 0 18px 50px rgb(139 92 246 / 14%);
+  border-color: var(--fx-arcane);
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.4), inset 0 0 0 1px rgb(139 92 246 / 24%);
 }
 
 .upgrade-card--evolution:hover,
 .upgrade-card--evolution:focus-visible {
-  border-color: rgb(255 209 102 / 86%);
-  box-shadow: var(--shadow-pop);
+  border-color: var(--fx-accent);
+  box-shadow: 0 0 24px var(--glow-gold), inset 0 0 0 2px rgba(255, 209, 102, 0.4);
 }
 
 .card--common {
@@ -1156,7 +1181,7 @@ h2::after {
 }
 
 .boon-desc {
-  color: #cbd5e1;
+  color: var(--c-parchment);
   font-size: var(--text-label);
   line-height: 1.45;
 }
@@ -1971,20 +1996,30 @@ h2::after {
 }
 
 .upgrade-card--banish-target {
-  outline: 2px dashed rgb(255 100 140 / 85%);
-  outline-offset: -2px;
+  border-color: var(--fx-hp);
+  box-shadow: 0 0 12px rgba(255, 51, 95, 0.4), inset 0 0 0 1px rgb(255 51 95 / 30%);
+}
+
+.upgrade-card--banish-target:hover {
+  box-shadow: 0 0 16px rgba(255, 51, 95, 0.5), inset 0 0 0 1px rgb(255 51 95 / 40%);
 }
 
 .upgrade-card__lock {
   position: absolute;
   top: 8px;
   right: 10px;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  user-select: none;
+  color: currentColor;
   opacity: 0.65;
-  transition: opacity 120ms;
+  transition: opacity var(--dur-fast);
   z-index: 2;
+  padding: var(--space-1);
+  margin: calc(var(--space-1) * -1);
 }
 
 .upgrade-card__lock:hover {
@@ -2002,6 +2037,9 @@ h2::after {
 }
 
 .upgrade-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   background: rgb(20 24 38 / 70%);
   border: 1px solid rgb(120 140 200 / 35%);
   color: #d8e4ff;
@@ -2010,7 +2048,7 @@ h2::after {
   font: inherit;
   font-size: var(--text-label);
   cursor: pointer;
-  transition: background var(--dur-fast), border-color var(--dur-fast);
+  transition: background var(--dur-fast), border-color var(--dur-fast), opacity var(--dur-fast);
 }
 
 .upgrade-action:hover:not(:disabled) {
@@ -2019,14 +2057,15 @@ h2::after {
 }
 
 .upgrade-action:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .upgrade-action--active {
   background: rgb(120 50 80 / 70%);
-  border-color: rgb(255 100 140 / 70%);
+  border-color: var(--glow-danger);
   color: #ffe0eb;
+  box-shadow: inset 0 0 0 1px var(--glow-danger);
 }
 
 .upgrade-action--info {

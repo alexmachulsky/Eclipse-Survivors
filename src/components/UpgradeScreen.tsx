@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { UpgradeOption } from '../game/types';
-import { StarIcon, StatIconMap, WeaponIconMap } from './icons';
+import { StarIcon, StatIconMap, WeaponIconMap, LockIcon, UnlockIcon, RerollIcon, BanishIcon } from './icons';
 
 interface UpgradeScreenProps {
   choices: UpgradeOption[];
@@ -59,14 +59,18 @@ function BoonCard({
       onClick={handleClick}
     >
       {onLock && (
-        <span
+        <button
           className="upgrade-card__lock"
-          role="button"
           aria-label={isLocked ? 'Unlock card' : 'Lock card'}
           onClick={(e) => { e.stopPropagation(); onLock(index); }}
+          type="button"
         >
-          {isLocked ? '🔒' : '🔓'}
-        </span>
+          {isLocked ? (
+            <LockIcon size={14} color="currentColor" />
+          ) : (
+            <UnlockIcon size={14} color="currentColor" />
+          )}
+        </button>
       )}
 
       <span className="boon-tag">{tag}</span>
@@ -144,7 +148,8 @@ export function UpgradeScreen({
               disabled={agency.rerolls <= 0}
               onClick={onReroll}
             >
-              ↻ Reroll ({agency.rerolls})
+              <RerollIcon size={14} color="currentColor" />
+              Reroll ({agency.rerolls})
             </button>
             <button
               type="button"
@@ -152,10 +157,12 @@ export function UpgradeScreen({
               disabled={agency.banishes <= 0}
               onClick={handleBanishClick}
             >
-              ✖ {banishMode ? 'Pick card' : `Banish (${agency.banishes})`}
+              <BanishIcon size={14} color="currentColor" />
+              {banishMode ? 'Pick card' : `Banish (${agency.banishes})`}
             </button>
             <span className="upgrade-action upgrade-action--info">
-              🔒 Locks left: {agency.locks}
+              <LockIcon size={14} color="currentColor" />
+              Locks left: {agency.locks}
             </span>
           </div>
         )}
