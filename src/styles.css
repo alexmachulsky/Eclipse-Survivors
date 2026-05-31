@@ -981,13 +981,19 @@ h2::after {
 
 .upgrade-panel {
   width: min(860px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .upgrade-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 @keyframes boon-rise {
@@ -1002,15 +1008,15 @@ h2::after {
 }
 
 .upgrade-card {
-  min-height: 220px;
+  min-height: auto;
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: var(--space-3);
   text-align: left;
   color: #f8fbff;
   border: 1px solid rgb(255 255 255 / 16%);
-  border-radius: 10px;
-  padding: 18px;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
   background:
     linear-gradient(160deg, rgb(94 234 212 / 8%), transparent 46%),
     rgb(15 23 42 / 86%);
@@ -1019,9 +1025,9 @@ h2::after {
   animation: boon-rise 220ms ease forwards;
   animation-delay: calc(var(--idx, 0) * 80ms);
   transition:
-    transform 140ms ease,
-    border-color 140ms ease,
-    box-shadow 140ms ease;
+    transform var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .upgrade-card--weapon {
@@ -1052,7 +1058,7 @@ h2::after {
 
 .upgrade-card:hover,
 .upgrade-card:focus-visible {
-  transform: translateY(-4px) perspective(600px) rotateY(2deg);
+  transform: translateY(-2px);
   outline: none;
 }
 
@@ -1109,9 +1115,9 @@ h2::after {
 
 .boon-tag {
   width: fit-content;
-  padding: 3px 8px;
-  border-radius: 5px;
-  font-size: 11px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-eyebrow);
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1140,42 +1146,43 @@ h2::after {
 .boon-icon {
   display: flex;
   align-items: center;
-  padding: 2px 0 4px;
+  padding: var(--space-1) 0 var(--space-2);
 }
 
 .boon-title {
-  font-size: 22px;
-  line-height: 1.05;
+  font-size: var(--text-title);
+  line-height: 1.1;
+  margin: 0;
 }
 
 .boon-desc {
   color: #cbd5e1;
-  font-size: 13px;
+  font-size: var(--text-label);
   line-height: 1.45;
 }
 
 .boon-pips {
   display: flex;
-  gap: 4px;
-  margin-top: 2px;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
 .upgrade-card__level {
-  font-size: 0.72rem;
+  font-size: var(--text-eyebrow);
   color: #64748b;
-  margin-top: 2px;
+  margin-top: var(--space-1);
 }
 
 .upgrade-card__delta {
-  font-size: 0.78rem;
+  font-size: var(--text-eyebrow);
   color: #4ade80;
-  margin-top: 6px;
+  margin-top: var(--space-2);
   font-weight: 600;
 }
 
 .upgrade-card small {
   color: #cbd5e1;
-  font-size: 14px;
+  font-size: var(--text-label);
   line-height: 1.45;
 }
 
@@ -1986,22 +1993,24 @@ h2::after {
 
 .upgrade-actions {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   justify-content: center;
-  margin-top: 18px;
+  margin-top: var(--space-4);
   flex-wrap: wrap;
+  padding-top: var(--space-4);
+  border-top: 0.5px solid rgb(255 255 255 / 8%);
 }
 
 .upgrade-action {
   background: rgb(20 24 38 / 70%);
   border: 1px solid rgb(120 140 200 / 35%);
   color: #d8e4ff;
-  padding: 8px 16px;
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-label);
   cursor: pointer;
-  transition: background 120ms, border-color 120ms;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
 }
 
 .upgrade-action:hover:not(:disabled) {
