@@ -1622,21 +1622,21 @@ h2::after {
 .pause-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 22px 0 0;
+  gap: var(--space-2);
+  margin: var(--space-5) 0 0;
 }
 
 .pause-stats > div {
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
   background: rgb(255 255 255 / 5%);
   border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .pause-stats dt {
-  margin: 0 0 4px;
-  color: #64748b;
-  font-size: 11px;
+  margin: 0 0 var(--space-1);
+  color: var(--text-dim);
+  font-size: var(--text-eyebrow);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1840,9 +1840,9 @@ h2::after {
 /* ── Pause loadout ── */
 .pause-layout {
   display: flex;
-  gap: 24px;
+  gap: var(--space-6);
   align-items: flex-start;
-  margin-top: 24px;
+  margin-top: var(--space-6);
 }
 
 .pause-loadout {
@@ -1850,9 +1850,9 @@ h2::after {
 }
 
 .pause-loadout-label {
-  margin: 0 0 10px;
-  color: #64748b;
-  font-size: 12px;
+  margin: 0 0 var(--space-2);
+  color: var(--text-dim);
+  font-size: var(--text-label);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -1861,7 +1861,7 @@ h2::after {
 .pause-weapons {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .button-row--vertical {
