@@ -145,12 +145,12 @@ button {
 .hud-top-inner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 18px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
   border: 1px solid rgb(148 163 184 / 22%);
   background: linear-gradient(180deg, rgb(15 23 42 / 86%), rgb(5 7 17 / 86%));
   backdrop-filter: blur(14px);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-weight: 800;
   font-size: 15px;
   white-space: nowrap;
@@ -160,18 +160,26 @@ button {
 .hud-stat {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
   color: #f8fbff;
   font-variant-numeric: tabular-nums;
 }
 
 .hud-stat + .hud-stat {
-  padding-left: 12px;
+  padding-left: var(--space-3);
   border-left: 1px solid rgb(255 255 255 / 10%);
+}
+
+.hud-stat--time {
+  font-weight: 900;
+  font-size: 16px;
 }
 
 .hud-stat--time strong {
   color: var(--c-common);
+  font-size: 16px;
 }
 
 .hud-stat--act {
@@ -509,15 +517,16 @@ button {
 .boss-countdown-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 4px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
   font-size: 0.72rem;
   font-weight: 700;
   background: rgba(255, 209, 102, 0.15);
   color: var(--c-rare);
   border: 1px solid rgba(255, 209, 102, 0.4);
   animation: boss-countdown-pulse 1.2s ease-in-out infinite alternate;
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
 }
 
 .boss-countdown-badge--urgent {
@@ -535,13 +544,14 @@ button {
 .objective-alert,
 .curse-alert {
   box-shadow: inset 0 0 0 1px rgb(94 234 212 / 35%);
-  padding: 2px 8px;
-  border-radius: 5px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
   color: var(--c-common);
   font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
 }
 
 .curse-alert {
@@ -555,12 +565,13 @@ button {
 }
 
 .streak-badge {
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
   font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.05em;
   animation: streak-enter 0.2s ease-out;
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
 }
 
 .streak-badge--bronze {
