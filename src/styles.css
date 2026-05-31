@@ -1362,8 +1362,8 @@ h2::after {
 
 /* ── Control hint ── */
 .control-hint {
-  margin: 22px 0 0;
-  padding-top: 18px;
+  margin: var(--space-5) 0 0;
+  padding-top: var(--space-4);
   border-top: 0.5px solid rgb(212 175 55 / 18%);
   color: rgb(148 163 184 / 80%);
   font-family: var(--font-body);
@@ -1380,8 +1380,8 @@ h2::after {
 
 .control-hint kbd {
   display: inline-block;
-  padding: 3px 8px;
-  border-radius: 1px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   border: 0.5px solid rgb(212 175 55 / 35%);
   background: rgb(6 7 15 / 60%);
   color: var(--c-gold-soft);
@@ -1396,11 +1396,11 @@ h2::after {
 .menu-arsenal {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-top: 22px;
-  padding: 14px 18px;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border: 0.5px solid rgb(94 234 212 / 22%);
-  border-radius: 1px;
+  border-radius: var(--radius-sm);
   background:
     linear-gradient(90deg, rgb(94 234 212 / 5%), transparent 70%),
     rgb(6 7 15 / 50%);
@@ -1410,11 +1410,11 @@ h2::after {
 .menu-arsenal::before {
   content: '⟡';
   position: absolute;
-  left: -10px;
+  left: calc(-1 * var(--space-2));
   top: 50%;
   transform: translateY(-50%);
   background: var(--c-void-deep);
-  padding: 0 6px;
+  padding: 0 var(--space-1);
   color: var(--c-gold);
   font-size: 14px;
 }
@@ -1431,13 +1431,13 @@ h2::after {
 .menu-arsenal-icons {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .menu-arsenal-icons > svg {
   filter: drop-shadow(0 0 8px rgb(94 234 212 / 35%));
-  transition: transform 320ms ease;
+  transition: transform var(--dur-med) ease;
 }
 
 .menu-arsenal:hover .menu-arsenal-icons > svg {
@@ -2247,7 +2247,7 @@ h2::after {
 .ritual-line::after {
   content: '';
   position: absolute;
-  top: -3px;
+  top: calc(-1 * var(--space-1) + 1px);
   width: 7px;
   height: 7px;
   border: 0.5px solid rgb(212 175 55 / 0.7);
@@ -2276,7 +2276,7 @@ h2::after {
   font-size: 14px;
   letter-spacing: 0;
   box-shadow:
-    0 0 0 4px var(--c-void-deep),
+    0 0 0 var(--space-1) var(--c-void-deep),
     0 0 18px rgb(212 175 55 / 0.18),
     inset 0 0 8px rgb(212 175 55 / 0.18);
   animation: ritual-sigil-rotate 22s linear infinite;
@@ -2295,7 +2295,7 @@ h2::after {
    viewport edges. Reinforces the "open almanac" feel. */
 .codex-rail {
   position: absolute;
-  left: 22px;
+  left: var(--space-5);
   top: 50%;
   z-index: 1;
   pointer-events: none;
@@ -2303,8 +2303,8 @@ h2::after {
   transform-origin: left center;
   display: inline-flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 12px;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
   font-family: var(--font-body);
   font-size: 10px;
   letter-spacing: 0.42em;
@@ -2315,7 +2315,7 @@ h2::after {
 
 .codex-rail--right {
   left: auto;
-  right: 22px;
+  right: var(--space-5);
   transform: translateY(-50%) rotate(90deg);
   transform-origin: right center;
   font-style: italic;
@@ -2399,7 +2399,7 @@ h2::after {
 .menu-panel--codex {
   width: min(540px, 100%);
   z-index: 3;
-  padding: clamp(26px, 3.4vw, 44px) clamp(32px, 4vw, 52px);
+  padding: clamp(var(--space-6), 3.4vw, var(--space-7)) clamp(var(--space-6), 4vw, var(--space-7));
   background:
     radial-gradient(140% 80% at 0% 0%, rgb(94 234 212 / 0.07), transparent 50%),
     radial-gradient(120% 80% at 0% 100%, rgb(139 92 246 / 0.05), transparent 55%),
@@ -2408,16 +2408,16 @@ h2::after {
 
 /* In the codex layout, condense vertical rhythm so the whole spread
    reads as one editorial composition that fits in the viewport. */
-.menu-panel--codex .eyebrow { margin-bottom: 14px; }
-.menu-panel--codex .menu-copy { margin: 16px 0 22px; font-size: 17px; }
-.menu-panel--codex .menu-arsenal { margin-top: 18px; padding: 11px 16px; }
-.menu-panel--codex .control-hint { margin-top: 16px; padding-top: 14px; }
-.menu-panel--codex .button-row { margin-top: 22px; }
-.menu-panel--codex .almanac-strip { margin: 18px 0 4px; padding: 12px 0; }
+.menu-panel--codex .eyebrow { margin-bottom: var(--space-3); }
+.menu-panel--codex .menu-copy { margin: var(--space-4) 0 var(--space-5); font-size: 17px; }
+.menu-panel--codex .menu-arsenal { margin-top: var(--space-4); padding: var(--space-2) var(--space-4); }
+.menu-panel--codex .control-hint { margin-top: var(--space-4); padding-top: var(--space-3); }
+.menu-panel--codex .button-row { margin-top: var(--space-5); }
+.menu-panel--codex .almanac-strip { margin: var(--space-4) 0 var(--space-1); padding: var(--space-2) 0; }
 
 .menu-panel--codex::before {
   /* tighter inner filigree frame with longer corner brackets */
-  inset: 6px;
+  inset: var(--space-1);
   mask:
     linear-gradient(#000 0 0) top left / 38px 0.5px no-repeat,
     linear-gradient(#000 0 0) top left / 0.5px 38px no-repeat,
@@ -2439,8 +2439,8 @@ h2::after {
   pointer-events: none;
   filter: drop-shadow(0 0 6px rgb(212 175 55 / 0.2));
 }
-.sigil-corner--tl { top: 14px; left: 14px; }
-.sigil-corner--br { bottom: 14px; right: 14px; }
+.sigil-corner--tl { top: var(--space-3); left: var(--space-3); }
+.sigil-corner--br { bottom: var(--space-3); right: var(--space-3); }
 
 /* Heading — impactful display with gilded em flourish on "ritual" */
 .menu-title {
@@ -2485,8 +2485,8 @@ h2::after {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
   gap: 0;
-  margin: 22px 0 6px;
-  padding: 14px 0;
+  margin: var(--space-5) 0 var(--space-1);
+  padding: var(--space-3) 0;
   border-top: 0.5px solid rgb(212 175 55 / 0.32);
   border-bottom: 0.5px solid rgb(212 175 55 / 0.32);
   position: relative;
@@ -2504,16 +2504,16 @@ h2::after {
   background: rgb(212 175 55 / 0.12);
   pointer-events: none;
 }
-.almanac-strip::before { top: -4px; }
-.almanac-strip::after  { bottom: -4px; }
+.almanac-strip::before { top: calc(-1 * var(--space-1)); }
+.almanac-strip::after  { bottom: calc(-1 * var(--space-1)); }
 
 .almanac-cell {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
-  padding: 0 16px;
+  gap: var(--space-1);
+  padding: 0 var(--space-4);
 }
 .almanac-cell + .almanac-cell::before {
   content: '';
@@ -2552,7 +2552,7 @@ h2::after {
   font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .almanac-cell--shards .almanac-cell__value {
@@ -2580,8 +2580,8 @@ h2::after {
   display: grid;
   grid-template-columns: 22px 1fr 22px;
   align-items: center;
-  gap: 14px;
-  padding: 17px 22px;
+  gap: var(--space-3);
+  padding: calc(var(--space-4) + 1px) var(--space-5);
   text-align: left;
 }
 
@@ -2599,7 +2599,7 @@ h2::after {
   letter-spacing: 0;
   background: rgb(6 7 15 / 0.6);
   box-shadow: inset 0 0 6px rgb(212 175 55 / 0.18);
-  transition: transform 320ms ease, box-shadow 320ms ease, border-color 220ms ease;
+  transition: transform var(--dur-med) ease, box-shadow var(--dur-med) ease, border-color var(--dur-fast) ease;
 }
 
 .btn--ritual:hover .btn-glyph {
@@ -2619,11 +2619,11 @@ h2::after {
   font-size: 16px;
   letter-spacing: 0;
   color: rgb(212 175 55 / 0.6);
-  transition: transform 220ms ease, color 220ms ease;
+  transition: transform var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 
 .btn--ritual:hover .btn-flourish {
-  transform: translateX(4px);
+  transform: translateX(var(--space-1));
   color: var(--c-gold-soft);
 }
 
@@ -2632,7 +2632,7 @@ h2::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   font-family: var(--font-display);
   font-style: italic;
   font-size: 12px;
@@ -2648,7 +2648,7 @@ h2::after {
 }
 
 .button-divider span {
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   letter-spacing: 0.06em;
 }
 
@@ -2697,8 +2697,8 @@ h2::after {
 @media (max-width: 1100px) {
   .overlay--codex {
     place-items: center;
-    padding-left: 24px;
-    padding-right: 24px;
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
   }
   .codex-rail,
   .codex-rail--right {
@@ -2713,7 +2713,7 @@ h2::after {
     z-index: 0;
   }
   .menu-panel--codex {
-    width: min(560px, 100%);
+    width: min(560px, calc(100% - var(--space-5) * 2));
     margin-top: 18vh;
   }
   .ritual-line { opacity: 0.35; }
@@ -2726,10 +2726,27 @@ h2::after {
   }
   .almanac-strip {
     grid-template-columns: repeat(2, 1fr);
-    row-gap: 10px;
+    row-gap: var(--space-2);
   }
   .almanac-cell + .almanac-cell:nth-child(odd)::before {
     display: none;
+  }
+  .menu-panel--codex {
+    padding: clamp(var(--space-5), 3vw, var(--space-6)) var(--space-4);
+  }
+}
+
+@media (max-width: 390px) {
+  .overlay--codex {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+  .menu-panel--codex {
+    width: calc(100% - var(--space-3) * 2);
+    padding: var(--space-4) var(--space-3);
+  }
+  .eclipse-motif--codex {
+    width: clamp(160px, 55vmin, 280px);
   }
 }
 
