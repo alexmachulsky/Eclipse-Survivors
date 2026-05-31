@@ -1661,27 +1661,27 @@ h2::after {
 .lan-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-top: 22px;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
 }
 
 .lan-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .lan-field span {
   color: #94a3b8;
-  font-size: 11px;
+  font-size: var(--text-eyebrow);
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .lan-field input {
-  padding: 12px 14px;
-  border-radius: 8px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
   border: 1px solid rgb(255 255 255 / 14%);
   background: rgb(7 11 24 / 70%);
   color: #f8fbff;
@@ -1689,12 +1689,14 @@ h2::after {
   font-size: 15px;
   font-weight: 600;
   outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
-.lan-field input:focus {
-  border-color: var(--c-common);
-  box-shadow: 0 0 0 3px rgb(94 234 212 / 18%);
+.lan-field input:focus-visible {
+  border-color: var(--c-arcane);
+  box-shadow: 0 0 0 2px rgb(139 92 246 / 35%);
+  outline: 2px solid var(--c-arcane);
+  outline-offset: 2px;
 }
 
 .lan-field .room-code-input {
@@ -1708,46 +1710,54 @@ h2::after {
 
 .lan-error {
   margin: 0;
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-4);
   background: rgba(255, 51, 95, 0.12);
   border: 1px solid rgba(255, 51, 95, 0.35);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: #ffb1c0;
-  font-size: 13px;
+  font-size: var(--text-label);
   font-weight: 600;
 }
 
 .link-button {
   background: none;
   border: 0;
-  padding: 6px 0;
+  padding: var(--space-1) 0;
   color: #94a3b8;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-eyebrow);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   cursor: pointer;
-  margin-top: 8px;
+  margin-top: var(--space-2);
   align-self: flex-start;
+  transition: color var(--dur-fast) ease;
 }
 
 .link-button:hover {
   color: var(--c-common);
 }
 
+.link-button:focus-visible {
+  outline: 2px solid var(--c-arcane);
+  outline-offset: 2px;
+}
+
 /* ── Lobby room-code banner ── */
 .room-code-banner {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 18px 0 16px;
-  padding: 14px 16px;
+  gap: var(--space-2);
+  margin: var(--space-5) 0 var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px dashed rgb(255 209 102 / 35%);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: linear-gradient(135deg, rgb(255 209 102 / 10%), rgb(94 234 212 / 4%));
 }
 
 .room-code-banner-label {
   color: var(--c-rare);
-  font-size: 11px;
+  font-size: var(--text-eyebrow);
   font-weight: 900;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1757,22 +1767,27 @@ h2::after {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 18px;
-  border-radius: 10px;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
   border: 1px solid rgb(255 209 102 / 35%);
   background: rgb(7 11 24 / 60%);
   color: #fff;
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  transition: transform var(--dur-fast) ease, border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 .room-code-pill:hover {
   border-color: var(--c-rare);
   box-shadow: 0 0 18px rgb(255 209 102 / 25%);
   transform: translateY(-1px);
+}
+
+.room-code-pill:focus-visible {
+  outline: 2px solid var(--c-arcane);
+  outline-offset: 2px;
 }
 
 .room-code-pill > span:first-child {
@@ -1785,7 +1800,7 @@ h2::after {
 
 .room-code-copy-hint {
   color: #94a3b8;
-  font-size: 11px;
+  font-size: var(--text-eyebrow);
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1793,18 +1808,18 @@ h2::after {
 
 .lobby-list {
   display: grid;
-  gap: 8px;
-  margin-top: 22px;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
 }
 
 .lobby-player {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: rgb(255 255 255 / 7%);
 }
 
@@ -1817,7 +1832,7 @@ h2::after {
 
 .lobby-player span:last-child {
   color: #94a3b8;
-  font-size: 12px;
+  font-size: var(--text-label);
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -2202,12 +2217,7 @@ h2::after {
 }
 
 /* Tighter rhythm for the link button on LAN screens */
-.link-button {
-  font-family: var(--font-body);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
+/* (already consolidated in the .link-button rule above) */
 
 /* ──────────────────────────────────────────────────────────
    Eclipse Codex — editorial almanac main menu
