@@ -76,6 +76,40 @@ export function Hud({ snapshot, onPause }: HudProps) {
     };
   }, [snapshot.actLabel]);
 
+  // Health damage flash
+  const prevHealthRef = useRef(snapshot.health);
+  const [hpHit, setHpHit] = useState(false);
+  const hpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (snapshot.health < prevHealthRef.current) {
+      setHpHit(true);
+      if (hpTimerRef.current) clearTimeout(hpTimerRef.current);
+      hpTimerRef.current = setTimeout(() => setHpHit(false), 300);
+    }
+    prevHealthRef.current = snapshot.health;
+    return () => {
+      if (hpTimerRef.current) clearTimeout(hpTimerRef.current);
+    };
+  }, [snapshot.health]);
+
+  // XP gain flash
+  const prevXpRef = useRef(snapshot.xp);
+  const [xpGain, setXpGain] = useState(false);
+  const xpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (snapshot.xp > prevXpRef.current) {
+      setXpGain(true);
+      if (xpTimerRef.current) clearTimeout(xpTimerRef.current);
+      xpTimerRef.current = setTimeout(() => setXpGain(false), 300);
+    }
+    prevXpRef.current = snapshot.xp;
+    return () => {
+      if (xpTimerRef.current) clearTimeout(xpTimerRef.current);
+    };
+  }, [snapshot.xp]);
+
   const getHealthBarClass = () => {
     if (healthRatio > 0.5) return 'hp-fill--healthy';
     if (healthRatio > 0.25) return 'hp-fill--mid';
@@ -161,7 +195,7 @@ export function Hud({ snapshot, onPause }: HudProps) {
         <div className="player-frame">
           <div className="player-frame-bars">
             <Tooltip content={<><strong>Health</strong>{Math.ceil(snapshot.health)} / {Math.round(snapshot.maxHealth)} HP<br/>Pick up hearts to restore health.</>}>
-              <div className="hud-bar-row hud-bar-row--hp">
+              <div className={`hud-bar-row hud-bar-row--hp${hpHit ? ' hud-bar-row--hp-hit' : ''}`}>
                 <HeartIcon size={15} color="var(--c-danger)" />
                 <div className="meter health-meter" aria-label="Health">
                   <span className={getHealthBarClass()} style={{ width: `${healthRatio * 100}%` }} />
@@ -177,7 +211,7 @@ export function Hud({ snapshot, onPause }: HudProps) {
               <DashPips dash={snapshot.dash} />
             </div>
             <Tooltip content={<><strong>Experience</strong>{snapshot.xp} / {snapshot.xpToNext} XP · Level {snapshot.level}<br/>Gain XP by killing enemies and completing rifts.</>}>
-              <div className="hud-bar-row hud-bar-row--xp">
+              <div className={`hud-bar-row hud-bar-row--xp${xpGain ? ' hud-bar-row--xp-gain' : ''}`}>
                 <span className="level-chip" aria-label={`Level ${snapshot.level}`}>{snapshot.level}</span>
                 <div className="meter xp-meter" aria-label="Experience">
                   <span style={{ width: `${xpRatio * 100}%` }} />
