@@ -110,6 +110,23 @@ export function Hud({ snapshot, onPause }: HudProps) {
     };
   }, [snapshot.xp]);
 
+  // Level-up pulse
+  const prevLevelRef = useRef(snapshot.level);
+  const [levelPulse, setLevelPulse] = useState(false);
+  const levelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (snapshot.level > prevLevelRef.current) {
+      setLevelPulse(true);
+      if (levelTimerRef.current) clearTimeout(levelTimerRef.current);
+      levelTimerRef.current = setTimeout(() => setLevelPulse(false), 500);
+    }
+    prevLevelRef.current = snapshot.level;
+    return () => {
+      if (levelTimerRef.current) clearTimeout(levelTimerRef.current);
+    };
+  }, [snapshot.level]);
+
   const getHealthBarClass = () => {
     if (healthRatio > 0.5) return 'hp-fill--healthy';
     if (healthRatio > 0.25) return 'hp-fill--mid';
@@ -212,7 +229,7 @@ export function Hud({ snapshot, onPause }: HudProps) {
             </div>
             <Tooltip content={<><strong>Experience</strong>{snapshot.xp} / {snapshot.xpToNext} XP · Level {snapshot.level}<br/>Gain XP by killing enemies and completing rifts.</>}>
               <div className={`hud-bar-row hud-bar-row--xp${xpGain ? ' hud-bar-row--xp-gain' : ''}`}>
-                <span className="level-chip" aria-label={`Level ${snapshot.level}`}>{snapshot.level}</span>
+                <span className={`level-chip${levelPulse ? ' level-chip--pulse' : ''}`} aria-label={`Level ${snapshot.level}`}>{snapshot.level}</span>
                 <div className="meter xp-meter" aria-label="Experience">
                   <span style={{ width: `${xpRatio * 100}%` }} />
                   <strong>

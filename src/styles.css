@@ -309,6 +309,16 @@ button {
   box-shadow: 0 0 10px rgb(139 92 246 / 35%);
 }
 
+.level-chip--pulse {
+  animation: level-pulse var(--dur-slow) var(--ease-spring);
+}
+
+@keyframes level-pulse {
+  0% { transform: scale(1); box-shadow: var(--glow-gold); }
+  50% { transform: scale(1.25); }
+  100% { transform: scale(1); box-shadow: none; }
+}
+
 .meter {
   position: relative;
   flex: 1;
@@ -412,12 +422,12 @@ button {
 .hud-bar-row--dash {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   margin-top: 2px;
 }
 .dash-pips {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-2);
   align-items: center;
 }
 .dash-pip {
@@ -428,11 +438,11 @@ button {
   border: 1px solid rgba(168, 243, 255, 0.4);
   position: relative;
   overflow: hidden;
-  transition: background 120ms ease, box-shadow 120ms ease;
+  transition: background var(--dur-fast) linear, box-shadow var(--dur-fast) linear;
 }
 .dash-pip.is-filled {
   background: linear-gradient(135deg, #ffffff, #a8f3ff);
-  box-shadow: 0 0 8px rgba(168, 243, 255, 0.8);
+  box-shadow: var(--glow-arcane);
   border-color: rgba(255, 255, 255, 0.8);
 }
 .dash-pip.is-filling::after {
@@ -447,7 +457,7 @@ button {
 .hud-weapons-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
@@ -456,23 +466,23 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 7px 9px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid rgb(148 163 184 / 22%);
   background: rgb(7 11 24 / 70%);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   min-width: 50px;
-  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
 
 .weapon-tile--upgraded {
-  border-color: rgb(255 209 102 / 45%);
+  border-color: var(--fx-accent);
   box-shadow: 0 0 12px rgb(255 209 102 / 12%);
 }
 
 .weapon-tile--active {
-  border-color: var(--c-rare) !important;
-  box-shadow: 0 0 12px rgba(255, 209, 102, 0.3), inset 0 0 14px rgba(255, 209, 102, 0.05) !important;
+  border-color: var(--c-common) !important;
+  box-shadow: var(--glow-teal), inset 0 0 14px rgba(94, 234, 212, 0.08) !important;
   transform: translateY(-1px);
 }
 
@@ -480,6 +490,8 @@ button {
   background:
     linear-gradient(150deg, rgb(255 209 102 / 18%), transparent 60%),
     rgb(7 11 24 / 70%);
+  border-color: var(--fx-accent);
+  box-shadow: var(--glow-gold);
 }
 
 .weapon-tile-level {
