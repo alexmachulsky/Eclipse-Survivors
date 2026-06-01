@@ -138,13 +138,16 @@ export function updateEnemies(enemies: Enemy[], playerPosition: { x: number; y: 
   for (const enemy of enemies) {
     const dx = playerPosition.x - enemy.position.x;
     const dy = playerPosition.y - enemy.position.y;
-    const distanceToPlayer = Math.hypot(dx, dy);
+    // Hot path: avoid Math.hypot. Use squared distance for range checks and a
+    // single sqrt only for the unit-vector normalization (per CLAUDE.md rules).
+    const distSq = dx * dx + dy * dy;
+    const distanceToPlayer = distSq === 0 ? 0 : Math.sqrt(distSq);
     const toPlayerX = distanceToPlayer === 0 ? 0 : dx / distanceToPlayer;
     const toPlayerY = distanceToPlayer === 0 ? 0 : dy / distanceToPlayer;
-    const shouldKite = enemy.type === 'ranged' && distanceToPlayer < 280;
+    const shouldKite = enemy.type === 'ranged' && distSq < 280 * 280;
     const directionX = shouldKite ? -toPlayerX : toPlayerX;
     const directionY = shouldKite ? -toPlayerY : toPlayerY;
-    const speed = enemy.type === 'boss' && distanceToPlayer < 180 ? enemy.speed * 0.55 : enemy.speed;
+    const speed = enemy.type === 'boss' && distSq < 180 * 180 ? enemy.speed * 0.55 : enemy.speed;
 
     enemy.position.x += directionX * speed * dt;
     enemy.position.y += directionY * speed * dt;
