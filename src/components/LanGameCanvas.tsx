@@ -164,6 +164,11 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
     let lastTime = performance.now();
     let fpsTimer = 0;
     let fpsFrames = 0;
+    // Hysteresis for adaptive performance mode (mirrors GameCanvas): require a
+    // sustained dip before shedding effects, and a long stable streak before
+    // restoring them, so the quality doesn't oscillate frame-to-frame.
+    let lowFpsSamples = 0;
+    let stableFpsSamples = 0;
 
     if (!context) {
       return undefined;
@@ -299,9 +304,21 @@ export function LanGameCanvas({ state, localPlayerId, sendCommand }: LanGameCanv
 
       if (fpsTimer >= 0.25) {
         const fps = fpsFrames / fpsTimer;
+
         if (fps < 58) {
-          engine.setPerformanceMode(true);
+          lowFpsSamples += 1;
+          stableFpsSamples = 0;
         } else if (fps >= 59.5) {
+          stableFpsSamples += 1;
+          lowFpsSamples = 0;
+        } else {
+          lowFpsSamples = 0;
+          stableFpsSamples = 0;
+        }
+
+        if (lowFpsSamples >= 2) {
+          engine.setPerformanceMode(true);
+        } else if (stableFpsSamples >= 16) {
           engine.setPerformanceMode(false);
         }
 

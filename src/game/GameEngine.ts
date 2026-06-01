@@ -95,6 +95,15 @@ export class GameEngine {
   private glowScale = 1;
   private performanceMode = false;
   private fastRender = false;
+  // Cached canvas gradients. Gradients are transformed by the CTM at paint time
+  // (not creation), so invariant gradients — health-bar variants (fixed local
+  // coords) and the view-sized vignette — can be built once and reused across
+  // every enemy / frame instead of allocated + colour-parsed each draw. Keyed to
+  // the creating context; invalidated if the canvas context ever changes.
+  private gradientCacheCtx: CanvasRenderingContext2D | null = null;
+  private healthBarGradients = new Map<string, CanvasGradient>();
+  private vignetteGradient: CanvasGradient | null = null;
+  private vignetteGradientKey = '';
   private dashTrail: Array<{ x: number; y: number; t: number }> = [];
   private dashHitPulseCounter = 0;
   private static readonly DASH_TRAIL_LIFE = 0.25;
@@ -431,6 +440,13 @@ export class GameEngine {
     };
 
     ctx.clearRect(0, 0, this.viewSize.width, this.viewSize.height);
+    if (this.gradientCacheCtx !== ctx) {
+      // New canvas context — cached gradients belong to the old one; rebuild lazily.
+      this.gradientCacheCtx = ctx;
+      this.healthBarGradients.clear();
+      this.vignetteGradient = null;
+      this.vignetteGradientKey = '';
+    }
     this.glowScale = this.getGlowScale();
     this.fastRender = this.performanceMode || this.glowScale === 0;
     this.drawBackdrop(ctx);
@@ -1296,6 +1312,48 @@ export class GameEngine {
     if (scaledBlur > 0) {
       ctx.shadowColor = color;
     }
+  }
+
+  // Health bars share a handful of gradients (one per width × colour tier). The
+  // gradient's local coords are fixed, so a single cached object paints
+  // correctly for every enemy under its own translate (CTM applies at paint
+  // time). Saves one createLinearGradient + colour-stop parse per enemy/frame.
+  private getHealthBarGradient(ctx: CanvasRenderingContext2D, width: number, tier: 0 | 1 | 2): CanvasGradient {
+    const key = `${width}:${tier}`;
+    let grad = this.healthBarGradients.get(key);
+    if (!grad) {
+      const x = -width / 2;
+      grad = ctx.createLinearGradient(x, 0, x + width, 0);
+      if (tier === 2) {
+        grad.addColorStop(0, '#5eead4');
+        grad.addColorStop(1, '#38bdf8');
+      } else if (tier === 1) {
+        grad.addColorStop(0, '#fde68a');
+        grad.addColorStop(1, '#f59e0b');
+      } else {
+        grad.addColorStop(0, '#fb7185');
+        grad.addColorStop(1, '#ef4444');
+      }
+      this.healthBarGradients.set(key, grad);
+    }
+    return grad;
+  }
+
+  // The vignette is a full-screen radial gradient that only depends on the view
+  // size, yet was rebuilt every frame. Cache it until the view size changes.
+  private getVignetteGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
+    const key = `${this.viewSize.width}x${this.viewSize.height}`;
+    if (!this.vignetteGradient || this.vignetteGradientKey !== key) {
+      const radius = Math.max(this.viewSize.width, this.viewSize.height) * 0.72;
+      const cx = this.viewSize.width / 2;
+      const cy = this.viewSize.height / 2;
+      const grad = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.40)');
+      this.vignetteGradient = grad;
+      this.vignetteGradientKey = key;
+    }
+    return this.vignetteGradient;
   }
 
   private pushDamageText(text: DamageText): void {
@@ -2389,11 +2447,7 @@ export class GameEngine {
   }
 
   private drawVignette(ctx: CanvasRenderingContext2D): void {
-    const radius = Math.max(this.viewSize.width, this.viewSize.height) * 0.72;
-    const gradient = ctx.createRadialGradient(this.viewSize.width / 2, this.viewSize.height / 2, radius * 0.2, this.viewSize.width / 2, this.viewSize.height / 2, radius);
-    gradient.addColorStop(0, 'rgba(0,0,0,0)');
-    gradient.addColorStop(1, 'rgba(0,0,0,0.40)');
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = this.getVignetteGradient(ctx);
     ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
 
     // 2f: Low HP canvas vignette
@@ -2464,20 +2518,8 @@ export class GameEngine {
 
     if (ratio > 0) {
       const fillWidth = Math.max(height, width * ratio);
-      const grad = ctx.createLinearGradient(x, 0, x + width, 0);
-
-      if (ratio > 0.6) {
-        grad.addColorStop(0, '#5eead4');
-        grad.addColorStop(1, '#38bdf8');
-      } else if (ratio > 0.3) {
-        grad.addColorStop(0, '#fde68a');
-        grad.addColorStop(1, '#f59e0b');
-      } else {
-        grad.addColorStop(0, '#fb7185');
-        grad.addColorStop(1, '#ef4444');
-      }
-
-      ctx.fillStyle = grad;
+      const tier = ratio > 0.6 ? 2 : ratio > 0.3 ? 1 : 0;
+      ctx.fillStyle = this.getHealthBarGradient(ctx, width, tier);
       ctx.beginPath();
       ctx.roundRect(x, y, fillWidth, height, height / 2);
       ctx.fill();
