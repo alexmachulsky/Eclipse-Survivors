@@ -898,6 +898,82 @@ describe('core game logic', () => {
     }
   });
 
+  it('reuses cached gradients so gradient creation does not scale with enemy count', () => {
+    const canvasStub = installCanvasStub();
+
+    function makeCountingCtx() {
+      const counts = { linear: 0, radial: 0 };
+      const gradient = { addColorStop: () => undefined };
+      let shadowBlur = 0;
+      const ctx = {
+        globalAlpha: 1, fillStyle: '', strokeStyle: '', lineWidth: 1, font: '',
+        textAlign: '', textBaseline: '', lineCap: '', lineJoin: '', globalCompositeOperation: '', shadowColor: '',
+        get shadowBlur() { return shadowBlur; }, set shadowBlur(v: number) { shadowBlur = v; },
+        clearRect: () => undefined, fillRect: () => undefined, strokeRect: () => undefined, drawImage: () => undefined,
+        createRadialGradient: () => { counts.radial += 1; return gradient; },
+        createLinearGradient: () => { counts.linear += 1; return gradient; },
+        beginPath: () => undefined, closePath: () => undefined, arc: () => undefined, ellipse: () => undefined,
+        rect: () => undefined, roundRect: () => undefined, fill: () => undefined, stroke: () => undefined,
+        moveTo: () => undefined, lineTo: () => undefined, bezierCurveTo: () => undefined, quadraticCurveTo: () => undefined,
+        save: () => undefined, restore: () => undefined, translate: () => undefined, rotate: () => undefined, scale: () => undefined,
+        fillText: () => undefined, strokeText: () => undefined, setTransform: () => undefined, setLineDash: () => undefined,
+        measureText: () => ({ width: 10 }), createPattern: () => null
+      } as unknown as CanvasRenderingContext2D;
+      return { ctx, counts };
+    }
+
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      setViewSize: (w: number, h: number) => void;
+      preloadRenderAssets: () => void;
+      startRun: () => void;
+      render: (ctx: CanvasRenderingContext2D) => void;
+      state: { enemies: Enemy[]; player: { position: { x: number; y: number } } };
+    };
+
+    try {
+      __resetRenderAssetsForTests();
+      engine.setViewSize(1280, 720);
+      engine.preloadRenderAssets();
+      engine.startRun();
+      const center = engine.state.player.position;
+      const viewport: Viewport = { x: center.x - 640, y: center.y - 360, width: 1280, height: 720 };
+
+      const fillView = (n: number) => {
+        engine.state.enemies.length = 0;
+        for (let i = 0; i < n; i++) {
+          const enemy = spawnEnemyOutsideViewport('basic', viewport, 1, () => 0.5);
+          enemy.id = `vis-${i}`;
+          // Reposition inside the viewport so it is drawn, and damage it so the
+          // health bar (the per-enemy gradient) renders.
+          enemy.position = { x: center.x + ((i % 20) - 10) * 28, y: center.y + (Math.floor(i / 20) - 5) * 28 };
+          enemy.health = enemy.maxHealth * 0.5;
+          engine.state.enemies.push(enemy);
+        }
+      };
+
+      const { ctx, counts } = makeCountingCtx();
+
+      // First render builds the cache for this context; measure the steady frame after.
+      fillView(20);
+      engine.render(ctx);
+      counts.linear = 0; counts.radial = 0;
+      engine.render(ctx);
+      const small = counts.linear + counts.radial;
+
+      fillView(120);
+      counts.linear = 0; counts.radial = 0;
+      engine.render(ctx);
+      const large = counts.linear + counts.radial;
+
+      // 6x more enemies must not create more gradients: they share cached ones.
+      expect(large).toBeLessThanOrEqual(small);
+      expect(large).toBeLessThan(8);
+    } finally {
+      __resetRenderAssetsForTests();
+      canvasStub.restore();
+    }
+  });
+
   it('spawns timed health pickups every 10 to 20 seconds and heals between 5 and 10 without exceeding max health', () => {
     const engine = new GameEngine(() => 0.999) as unknown as {
       setViewSize: (width: number, height: number) => void;
