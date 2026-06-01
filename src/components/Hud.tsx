@@ -2,7 +2,7 @@ import type { GameSnapshot } from '../game/GameEngine';
 import type { Weapon } from '../game/types';
 import { ClockIcon, HeartIcon, SkullIcon, WeaponIconMap } from './icons';
 import { Tooltip } from './Tooltip';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 
 interface HudProps {
   snapshot: GameSnapshot;
@@ -52,7 +52,7 @@ function DashPips({ dash }: { dash: GameSnapshot['dash'] }) {
   return <div className="dash-pips" aria-label="Dash charges">{pips}</div>;
 }
 
-export function Hud({ snapshot, onPause }: HudProps) {
+export const Hud = memo(function Hud({ snapshot, onPause }: HudProps) {
   const healthRatio = Math.max(0, snapshot.health / snapshot.maxHealth);
   const xpRatio = Math.max(0, Math.min(1, snapshot.xp / snapshot.xpToNext));
   const objective = snapshot.activeObjective;
@@ -256,4 +256,4 @@ export function Hud({ snapshot, onPause }: HudProps) {
       </div>
     </>
   );
-}
+});

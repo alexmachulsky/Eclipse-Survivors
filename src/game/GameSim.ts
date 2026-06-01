@@ -656,7 +656,7 @@ export class GameSim {
       const angle = angleTo(enemy.position, target.player.position);
       const phase = enemy.type === 'boss' ? getBossPhase(enemy.health / enemy.maxHealth) : 1;
       const spreadCount = enemy.type === 'boss' ? (phase === 1 ? 3 : phase === 2 ? 8 : 10) : 1;
-      const shotSpeed = enemy.type === 'boss' ? (phase === 3 ? 285 : 230) : 190;
+      const shotSpeed = enemy.type === 'boss' ? (phase === 3 ? 285 : 230) : 130;
 
       this.addTelegraph({
         id: `telegraph-${enemy.id}-${this.state.elapsed}`,
@@ -684,7 +684,7 @@ export class GameSim {
           kind: 'ranged',
           position: { ...enemy.position },
           velocity: vectorFromAngle(shotAngle, shotSpeed),
-          radius: enemy.type === 'boss' ? 8 : 6,
+          radius: 8,
           damage: enemy.damage,
           life: 3.5,
           maxLife: 3.5,
@@ -887,7 +887,7 @@ export class GameSim {
 
       for (const runtime of this.getActivePlayers()) {
         const pickupRadius = runtime.player.radius + runtime.player.pickupRadius * 0.16;
-        if (circlesOverlapSq(gem.position, gem.radius, runtime.player.position, pickupRadius)) {
+        if (circlesOverlapSq(gem.position, gem.radius * 3.2, runtime.player.position, pickupRadius)) {
           runtime.xp += gem.value;
           this.resolveLevelUp(runtime);
           continue gemLoop;

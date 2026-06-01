@@ -758,7 +758,7 @@ export class GameEngine {
       const angle = angleTo(enemy.position, this.state.player.position);
       const phase = enemy.type === 'boss' ? getBossPhase(enemy.health / enemy.maxHealth) : 1;
       const spreadCount = enemy.type === 'boss' ? (phase === 1 ? 3 : phase === 2 ? 8 : 10) : 1;
-      const shotSpeed = enemy.type === 'boss' ? (phase === 3 ? 285 : 230) : 190;
+      const shotSpeed = enemy.type === 'boss' ? (phase === 3 ? 285 : 230) : 130;
 
       this.addTelegraph({
         id: `telegraph-${enemy.id}-${this.state.elapsed}`,
@@ -783,7 +783,7 @@ export class GameEngine {
           kind: 'ranged',
           position: { ...enemy.position },
           velocity: vectorFromAngle(shotAngle, shotSpeed),
-          radius: enemy.type === 'boss' ? 8 : 6,
+          radius: 8,
           damage: enemy.damage,
           life: 3.5,
           maxLife: 3.5,
@@ -1022,7 +1022,7 @@ export class GameEngine {
         gem.position.y += directionY * speed * dt;
       }
 
-      if (circlesOverlapSq(gem.position, gem.radius, player.position, pickupRadius)) {
+      if (circlesOverlapSq(gem.position, gem.radius * 3.2, player.position, pickupRadius)) {
         this.state.xp += gem.value;
         this.resolveLevelUp();
         continue;
@@ -2124,6 +2124,22 @@ export class GameEngine {
     ctx.rotate(player.facingAngle);
     ctx.globalAlpha = runtime.status === 'downed' ? 0.45 : iframes ? 0.88 : 1;
 
+    // === Soft breathing glow halo behind the ship for extra pop (skipped in perf mode) ===
+    if (this.glowScale > 0 && runtime.status !== 'downed') {
+      const breathe = 0.82 + Math.sin(t * 2.4) * 0.18;
+      const haloR = r * 2.75 * breathe;
+      const halo = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, haloR);
+      halo.addColorStop(0, `rgba(140,220,255,${0.42 * this.glowScale * breathe})`);
+      halo.addColorStop(0.45, `rgba(95,170,255,${0.18 * this.glowScale})`);
+      halo.addColorStop(1, 'rgba(60,130,255,0)');
+      ctx.save();
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, haloR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     // === Per-frame engine exhaust trails (drawn behind sprite) ===
     if (!this.fastRender && runtime.status !== 'downed') {
       const throb = 0.75 + Math.sin(t * 18) * 0.18 + Math.sin(t * 41) * 0.08;
@@ -2252,10 +2268,6 @@ export class GameEngine {
 
     ctx.rotate(-player.facingAngle);
     ctx.shadowBlur = 0;
-    ctx.fillStyle = runtime.color;
-    ctx.beginPath();
-    ctx.arc(0, -r * 2.65, 5, 0, Math.PI * 2);
-    ctx.fill();
 
     if (runtime.status === 'downed') {
       const progress = clamp(runtime.reviveProgress / 3, 0, 1);

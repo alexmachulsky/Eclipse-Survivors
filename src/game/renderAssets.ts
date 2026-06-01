@@ -114,28 +114,33 @@ function shadowBlob(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCont
 function buildPlayer(hit = false): SpriteAsset {
   return createSprite(128, (ctx, unit) => {
     const r = 14 * unit;
-    const accent = hit ? '#e2e8f0' : '#7cf7ff';
-    const hullDeep = hit ? '#1f2937' : '#070d1c';
-    const hullMid = hit ? '#4b5563' : '#1a2f5a';
-    const hullEdge = hit ? '#6b7280' : '#3a6dbe';
+    // Brighter, higher-contrast cyan/blue palette so the hull reads as *lit* against the dark arena.
+    const accent = hit ? '#f0f9ff' : '#9ef6ff';   // crisp silhouette rim / edge accent
+    const rimLight = hit ? '#ffffff' : '#e2faff';  // hottest top-light highlight
+    const hullDeep = hit ? '#1f2937' : '#0c1830';  // belly / shadow anchor (kept dark for contrast)
+    const hullMid = hit ? '#52607a' : '#345da8';   // mid panel
+    const hullEdge = hit ? '#aab4c4' : '#6fabf2';  // lit panel
+    const hullLit = hit ? '#eef2f7' : '#bce6ff';   // top-light catch
+
+    // === Outer glow halo — soft cyan lift so the silhouette separates from the dark background ===
+    radial(ctx, r * 0.15, r * 2.0,
+      hit ? 'rgba(220,235,255,0.24)' : 'rgba(95,175,255,0.30)',
+      'rgba(40,80,200,0)');
+    radial(ctx, r * 0.05, r * 1.2,
+      hit ? 'rgba(240,250,255,0.22)' : 'rgba(140,225,255,0.28)',
+      'rgba(60,130,255,0)');
 
     // Ground shadow — slightly offset behind to give a sense of altitude
-    shadowBlob(ctx, r * 1.15, r * 0.28, r * 0.85);
-
-    // === Ambient hover aura ===
-    radial(ctx, r * 0.1, r * 1.95,
-      hit ? 'rgba(255,255,255,0.16)' : 'rgba(80,140,255,0.22)',
-      'rgba(40,80,200,0)');
+    shadowBlob(ctx, r * 1.1, r * 0.26, r * 0.9);
 
     // === Swept delta wings (more aggressive sweep, sharper tips) ===
+    ctx.lineJoin = 'round';
     for (const sign of [-1, 1] as const) {
       const wingGrad = ctx.createLinearGradient(0, sign * r * 0.1, 0, sign * r * 1.0);
-      wingGrad.addColorStop(0, hullMid);
-      wingGrad.addColorStop(0.55, hullDeep);
-      wingGrad.addColorStop(1, hit ? '#0f172a' : '#03070f');
+      wingGrad.addColorStop(0, hullLit);
+      wingGrad.addColorStop(0.55, hullEdge);
+      wingGrad.addColorStop(1, hullMid);
       ctx.fillStyle = wingGrad;
-      ctx.strokeStyle = hit ? 'rgba(200,210,255,0.6)' : 'rgba(120,200,255,0.55)';
-      ctx.lineWidth = 0.85 * unit;
       ctx.beginPath();
       ctx.moveTo(r * 0.42, sign * r * 0.16);          // forward wing root
       ctx.lineTo(r * 0.05, sign * r * 0.24);          // inner edge
@@ -144,22 +149,22 @@ function buildPlayer(hit = false): SpriteAsset {
       ctx.lineTo(-r * 0.05, sign * r * 0.62);         // trailing root
       ctx.closePath();
       ctx.fill();
+
+      // Bright rim along the leading (outer) wing edge — defines the silhouette
+      ctx.strokeStyle = hit ? 'rgba(255,255,255,0.85)' : 'rgba(150,240,255,0.85)';
+      ctx.lineWidth = 1.1 * unit;
+      ctx.beginPath();
+      ctx.moveTo(r * 0.42, sign * r * 0.16);
+      ctx.lineTo(r * 0.05, sign * r * 0.24);
+      ctx.lineTo(-r * 0.55, sign * r * 1.02);
       ctx.stroke();
 
       // Wing accent stripe (cyan)
-      ctx.strokeStyle = hit ? 'rgba(255,255,255,0.3)' : 'rgba(125,230,255,0.55)';
-      ctx.lineWidth = 0.7 * unit;
+      ctx.strokeStyle = hit ? 'rgba(255,255,255,0.45)' : 'rgba(140,235,255,0.68)';
+      ctx.lineWidth = 0.8 * unit;
       ctx.beginPath();
       ctx.moveTo(r * 0.25, sign * r * 0.28);
       ctx.lineTo(-r * 0.45, sign * r * 0.88);
-      ctx.stroke();
-
-      // Secondary panel line
-      ctx.strokeStyle = hit ? 'rgba(255,255,255,0.12)' : 'rgba(120,200,255,0.22)';
-      ctx.lineWidth = 0.5 * unit;
-      ctx.beginPath();
-      ctx.moveTo(r * 0.05, sign * r * 0.4);
-      ctx.lineTo(-r * 0.32, sign * r * 0.78);
       ctx.stroke();
     }
 
@@ -200,15 +205,14 @@ function buildPlayer(hit = false): SpriteAsset {
     }
 
     // === Main hull body (sharper nose, narrower waist) ===
-    const hullGrad = ctx.createLinearGradient(-r * 0.7, 0, r * 1.05, 0);
-    hullGrad.addColorStop(0, hullDeep);
-    hullGrad.addColorStop(0.25, hullMid);
+    // Vertical gradient = top-lit fuselage → shadowed belly, giving the hull rounded dimensional form.
+    const hullGrad = ctx.createLinearGradient(0, -r * 0.34, 0, r * 0.34);
+    hullGrad.addColorStop(0, rimLight);
+    hullGrad.addColorStop(0.28, hullLit);
     hullGrad.addColorStop(0.6, hullEdge);
     hullGrad.addColorStop(0.85, hullMid);
     hullGrad.addColorStop(1, hullDeep);
     ctx.fillStyle = hullGrad;
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 1.15 * unit;
     ctx.beginPath();
     ctx.moveTo(r * 1.05, 0);                   // sharp nose tip
     ctx.lineTo(r * 0.7, -r * 0.18);
@@ -222,11 +226,26 @@ function buildPlayer(hit = false): SpriteAsset {
     ctx.lineTo(r * 0.7, r * 0.18);
     ctx.closePath();
     ctx.fill();
+    // Crisp bright silhouette rim around the whole hull
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.75 * unit;
     ctx.stroke();
+    // Hot rim-light catching the top / nose edge
+    ctx.strokeStyle = rimLight;
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 0.85 * unit;
+    ctx.beginPath();
+    ctx.moveTo(r * 1.05, 0);
+    ctx.lineTo(r * 0.7, -r * 0.18);
+    ctx.lineTo(r * 0.2, -r * 0.32);
+    ctx.lineTo(-r * 0.42, -r * 0.3);
+    ctx.lineTo(-r * 0.7, -r * 0.16);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
 
     // Inner specular highlight on hull top edge
     const specGrad = ctx.createLinearGradient(0, -r * 0.32, 0, 0);
-    specGrad.addColorStop(0, hit ? 'rgba(255,255,255,0.45)' : 'rgba(160,220,255,0.4)');
+    specGrad.addColorStop(0, hit ? 'rgba(255,255,255,0.55)' : 'rgba(190,235,255,0.5)');
     specGrad.addColorStop(1, 'rgba(160,220,255,0)');
     ctx.fillStyle = specGrad;
     ctx.beginPath();
@@ -245,37 +264,22 @@ function buildPlayer(hit = false): SpriteAsset {
     // === Reactor seam (down center spine — base layer; bright pulse drawn per-frame) ===
     const seamGrad = ctx.createLinearGradient(-r * 0.55, 0, r * 0.85, 0);
     seamGrad.addColorStop(0, hit ? 'rgba(255,255,255,0.0)' : 'rgba(125,230,255,0)');
-    seamGrad.addColorStop(0.3, hit ? 'rgba(255,255,255,0.5)' : 'rgba(125,230,255,0.7)');
-    seamGrad.addColorStop(0.7, hit ? 'rgba(255,255,255,0.6)' : 'rgba(180,240,255,0.85)');
+    seamGrad.addColorStop(0.3, hit ? 'rgba(255,255,255,0.7)' : 'rgba(150,238,255,0.9)');
+    seamGrad.addColorStop(0.7, hit ? 'rgba(255,255,255,0.85)' : 'rgba(205,248,255,1)');
     seamGrad.addColorStop(1, hit ? 'rgba(255,255,255,0.0)' : 'rgba(125,230,255,0)');
     ctx.fillStyle = seamGrad;
     ctx.beginPath();
-    ctx.rect(-r * 0.55, -r * 0.025, r * 1.4, r * 0.05);
+    ctx.rect(-r * 0.55, -r * 0.03, r * 1.4, r * 0.06);
     ctx.fill();
 
-    // === Hull panel lines ===
-    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.16)' : 'rgba(120,200,255,0.28)';
+    // === Hull panel line (one clean sweep per side; finer detail just reads as noise at gameplay size) ===
+    ctx.strokeStyle = hit ? 'rgba(255,255,255,0.22)' : 'rgba(150,225,255,0.4)';
     ctx.lineWidth = 0.6 * unit;
     for (const sign of [-1, 1] as const) {
       ctx.beginPath();
       ctx.moveTo(r * 0.6, sign * r * 0.06);
       ctx.lineTo(-r * 0.5, sign * r * 0.18);
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(r * 0.45, sign * r * 0.18);
-      ctx.lineTo(r * 0.05, sign * r * 0.26);
-      ctx.stroke();
-    }
-
-    // Three rivet dots on each side (just decoration)
-    ctx.fillStyle = hit ? 'rgba(255,255,255,0.4)' : 'rgba(120,200,255,0.5)';
-    for (const sign of [-1, 1] as const) {
-      for (let i = 0; i < 3; i += 1) {
-        const rx = r * 0.4 - i * r * 0.32;
-        ctx.beginPath();
-        ctx.arc(rx, sign * r * 0.22, r * 0.018, 0, Math.PI * 2);
-        ctx.fill();
-      }
     }
 
     // === Cockpit canopy (faceted glass — 3 segments) ===
@@ -294,9 +298,9 @@ function buildPlayer(hit = false): SpriteAsset {
 
     // Canopy glass (deep blue with cyan rim)
     const cpGrad = ctx.createRadialGradient(cpX - cpRx * 0.25, -cpRy * 0.3, 0, cpX, 0, cpRx);
-    cpGrad.addColorStop(0, hit ? '#ffffff' : '#a0e6ff');
-    cpGrad.addColorStop(0.5, hit ? '#94a3b8' : '#1a6fa6');
-    cpGrad.addColorStop(1, hit ? '#374151' : '#020a18');
+    cpGrad.addColorStop(0, hit ? '#ffffff' : '#d8f4ff');
+    cpGrad.addColorStop(0.5, hit ? '#94a3b8' : '#2a8fcf');
+    cpGrad.addColorStop(1, hit ? '#374151' : '#031024');
     ctx.fillStyle = cpGrad;
     ctx.beginPath();
     ctx.ellipse(cpX, 0, cpRx, cpRy, 0, 0, Math.PI * 2);

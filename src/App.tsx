@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { Hud } from './components/Hud';
 import { LanGameCanvas } from './components/LanGameCanvas';
+import { shouldRefreshHud } from './components/hudThrottle';
 import { EndScreen, LanLobby, LanSetup, MainMenu, PauseMenu } from './components/OverlayScreens';
 import { UpgradeScreen } from './components/UpgradeScreen';
 import { GameEngine, type GameSnapshot } from './game/GameEngine';
@@ -12,6 +13,17 @@ import type { MultiplayerGameState, PlayerCommand, PlayerRuntime } from './game/
 import { getUnlockedWeapons } from './game/weapons';
 
 const initialSnapshot: GameSnapshot = new GameEngine().getSnapshot();
+
+// LAN has no client-side pause; a stable handler reference lets React.memo(Hud)
+// skip re-renders driven purely by the 30 Hz canvas snapshot stream.
+const LAN_NO_PAUSE = () => undefined;
+
+// The canvas consumes the full 30 Hz server snapshot stream (via its own rAF
+// loop + interpolation), but the React HUD/overlays only need a low refresh
+// rate. Re-rendering the HUD on every snapshot floods the main thread with
+// React work (render + effects + DOM) that competes with the canvas rAF and
+// drops frames. ~12 Hz is imperceptible for meters/timers and frees the loop.
+const HUD_UPDATE_MS = 80;
 
 type Mode = 'solo' | 'lan';
 
@@ -100,7 +112,13 @@ export default function App() {
   const [lanScreen, setLanScreen] = useState<LanScreen>('chooser');
   const [lanError, setLanError] = useState<string | null>(null);
 
-  const localLanSnapshot = useMemo(() => createLocalSnapshot(lanSnapshot), [lanSnapshot]);
+  // Throttled HUD/overlay snapshot. Decoupled from `lanSnapshot` (which feeds
+  // the canvas at full 30 Hz) so the HUD re-renders at ~12 Hz instead of 30 Hz.
+  const [hudSnapshot, setHudSnapshot] = useState<GameSnapshot>(initialSnapshot);
+  const hudThrottleRef = useRef(0);
+  // Phase + local-player status; when this changes (level-up, death, end of
+  // run) we push the HUD update immediately rather than waiting for the timer.
+  const hudKeyRef = useRef<string | null>(null);
 
   // Reset savedRef when starting a new run
   useEffect(() => {
@@ -196,6 +214,11 @@ export default function App() {
       socketRef.current = null;
     }
 
+    // Force the next snapshot to paint the HUD immediately (don't carry a stale
+    // throttle key/timestamp from a previous room into the new session).
+    hudKeyRef.current = null;
+    hudThrottleRef.current = 0;
+
     const randomTag = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID().slice(0, 4)
       : Math.random().toString(36).slice(2, 6);
@@ -233,10 +256,28 @@ export default function App() {
       if (message.type === 'welcome') {
         window.sessionStorage.setItem('survival-lan-session', message.reconnectToken);
       } else if (message.type === 'snapshot') {
+        // Full-rate stream for the canvas (interpolated in its own rAF loop).
         setLanSnapshot(message);
         // First snapshot is the cue that the server accepted us into a room.
         // Switch the UI to the lobby (or game, if the host already started).
         setLanScreen('lobby');
+        // Throttle the React HUD/overlay update, but always fire immediately on
+        // a phase/status transition so level-up, death and end screens are not
+        // delayed by the throttle window.
+        const runtime = message.state.players.find((player) => player.id === message.localPlayerId);
+        const decision = shouldRefreshHud(
+          hudKeyRef.current,
+          hudThrottleRef.current,
+          message.room.phase,
+          runtime?.status,
+          performance.now(),
+          HUD_UPDATE_MS
+        );
+        if (decision.refresh) {
+          hudKeyRef.current = decision.key;
+          hudThrottleRef.current = decision.time;
+          setHudSnapshot(createLocalSnapshot(message));
+        }
       } else if (message.type === 'error') {
         setLanError(message.message);
         setConnectionStatus(message.message);
@@ -282,7 +323,7 @@ export default function App() {
     }
   }, []);
 
-  const activeSnapshot = mode === 'lan' ? localLanSnapshot : snapshot;
+  const activeSnapshot = mode === 'lan' ? hudSnapshot : snapshot;
   const lanPlayers: PlayerRuntime[] = lanSnapshot?.state.players ?? [];
   const showLanLobby = mode === 'lan' && lanScreen === 'lobby' && lanSnapshot?.room.phase === 'lobby';
   const showLanSetup = mode === 'lan' && lanScreen !== 'lobby';
@@ -292,7 +333,7 @@ export default function App() {
     return (
       <main className="app-shell">
         <LanGameCanvas state={lanSnapshot?.state ?? null} localPlayerId={lanSnapshot?.localPlayerId ?? null} sendCommand={sendLanCommand} />
-        {activeSnapshot.phase !== 'menu' && lanScreen === 'lobby' && <Hud snapshot={activeSnapshot} onPause={() => undefined} />}
+        {activeSnapshot.phase !== 'menu' && lanScreen === 'lobby' && <Hud snapshot={activeSnapshot} onPause={LAN_NO_PAUSE} />}
         {showLanSetup && (
           <LanSetup
             screen={lanScreen as Exclude<LanScreen, 'lobby'>}

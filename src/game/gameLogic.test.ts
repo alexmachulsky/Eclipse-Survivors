@@ -15,7 +15,7 @@ import { createStartingPlayer, createStartingWeapons } from './state';
 import { createAreaPulse, findNearestEnemy, fireWeaponAtTarget } from './weapons';
 import { resolveProjectileEnemyHit } from './projectiles';
 import { collectRunDirectorEvents, createRunDirectorState, getActLabel, getBossPhase, updateObjectiveProgress } from './runDirector';
-import type { Enemy, ObjectiveState, Projectile, UpgradeOption, Viewport, Weapon } from './types';
+import type { Enemy, ObjectiveState, PlayerRuntime, Projectile, UpgradeOption, Viewport, Weapon } from './types';
 import { GameEngine } from './GameEngine';
 import { GameSim, findNearestActivePlayer } from './GameSim';
 import { beginFrame, beginRender, beginUpdate, endFrame, endRender, endUpdate, resetPerfForTests, summary } from './perf';
@@ -76,6 +76,42 @@ function installCanvasStub(): { created: () => number; restore: () => void } {
       globalThis.document = originalDocument;
     }
   };
+}
+
+function createRecordingCanvasContext(): { context: CanvasRenderingContext2D; arcs: Array<{ x: number; y: number; radius: number; fillStyle: string }> } {
+  const arcs: Array<{ x: number; y: number; radius: number; fillStyle: string }> = [];
+  const gradient = { addColorStop: () => undefined };
+  let fillStyle = '';
+  const context = {
+    globalAlpha: 1,
+    strokeStyle: '',
+    lineWidth: 1,
+    shadowBlur: 0,
+    shadowColor: '',
+    get fillStyle() {
+      return fillStyle;
+    },
+    set fillStyle(value: string | CanvasGradient | CanvasPattern) {
+      fillStyle = typeof value === 'string' ? value : '[gradient]';
+    },
+    fillRect: () => undefined,
+    drawImage: () => undefined,
+    createRadialGradient: () => gradient,
+    createLinearGradient: () => gradient,
+    beginPath: () => undefined,
+    arc: (x: number, y: number, radius: number) => {
+      arcs.push({ x, y, radius, fillStyle });
+    },
+    ellipse: () => undefined,
+    fill: () => undefined,
+    stroke: () => undefined,
+    save: () => undefined,
+    restore: () => undefined,
+    translate: () => undefined,
+    rotate: () => undefined
+  } as unknown as CanvasRenderingContext2D;
+
+  return { context, arcs };
 }
 
 describe('core game logic', () => {
@@ -290,6 +326,52 @@ describe('core game logic', () => {
       expect(preloadRenderAssets()).toBe(assets);
       expect(getRenderAssetStats().builds).toBe(1);
       expect(canvasStub.created()).toBe(createdAfterPreload + 3);
+    } finally {
+      __resetRenderAssetsForTests();
+      canvasStub.restore();
+    }
+  });
+
+  it('does not draw a player color marker above the ship', () => {
+    const canvasStub = installCanvasStub();
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      drawRuntimePlayer: (ctx: CanvasRenderingContext2D, runtime: PlayerRuntime) => void;
+      fastRender: boolean;
+    };
+    const player = createStartingPlayer({ x: 100, y: 100 });
+    const runtime: PlayerRuntime = {
+      id: 'solo',
+      name: 'Player',
+      color: '#5eead4',
+      status: 'active',
+      player,
+      weapons: createStartingWeapons(),
+      level: 1,
+      xp: 0,
+      xpToNext: getXpThreshold(1),
+      upgradeChoices: [],
+      pendingChestChoices: [],
+      stats: {
+        timeSurvived: 0,
+        kills: 0,
+        level: 1,
+        upgradesCollected: 0,
+        damageDealt: 0
+      },
+      reviveProgress: 0
+    };
+    const recording = createRecordingCanvasContext();
+
+    try {
+      engine.fastRender = true;
+      engine.drawRuntimePlayer(recording.context, runtime);
+
+      expect(recording.arcs).not.toContainEqual({
+        x: 0,
+        y: -player.radius * 2.65,
+        radius: 5,
+        fillStyle: runtime.color
+      });
     } finally {
       __resetRenderAssetsForTests();
       canvasStub.restore();
