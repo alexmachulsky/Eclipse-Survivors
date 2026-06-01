@@ -1,5 +1,5 @@
 import type { GameState, Player, Vector, Weapon } from './types';
-import { getXpThreshold } from './upgrades';
+import { getXpThreshold } from './rewards';
 import { createRunDirectorState } from './runDirector';
 
 const DASH_DEFAULTS = {
@@ -140,6 +140,7 @@ export function createInitialGameState(): GameState {
     agency: { rerolls: 2, banishes: 1, locks: 1, maxRerolls: 2, maxLocks: 1 },
     bannedUpgradeIds: [],
     lockedSlot: null,
-    lastRunReward: 0
+    lastRunReward: 0,
+    walleted: false
   };
 }

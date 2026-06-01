@@ -44,6 +44,24 @@ export const PASSIVES: PassiveDefinition[] = [
     name: 'Keen Fletching',
     description: '+12% projectile speed per level',
     maxLevel: 5
+  },
+  {
+    id: 'comet-catalyst',
+    name: 'Comet Catalyst',
+    description: '+25% dash damage per level',
+    maxLevel: 5
+  },
+  {
+    id: 'stellar-drive',
+    name: 'Stellar Drive',
+    description: '-15% dash recharge per level',
+    maxLevel: 5
+  },
+  {
+    id: 'eclipse-momentum',
+    name: 'Eclipse Momentum',
+    description: '+1 dash charge',
+    maxLevel: 1
   }
 ];
 

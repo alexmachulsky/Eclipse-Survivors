@@ -15,7 +15,8 @@ import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import { preloadRenderAssets, type RenderAssets, type SpriteAsset } from './renderAssets';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
-import { calculateRunReward, loadWallet, saveWallet } from './wallet';
+import { creditRunReward } from './wallet';
+import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, computeSpawnPack } from './simulation';
 import {
   collectRunDirectorEvents,
   createRiftObjective,
@@ -26,7 +27,7 @@ import {
 } from './runDirector';
 import { SpatialGrid } from './spatialGrid';
 import { createInitialGameState } from './state';
-import { getXpThreshold } from './upgrades';
+import { getXpThreshold } from './rewards';
 import { createAreaPulse, createStarfallSparks, findNearestEnemy, fireWeaponAtTarget, getUnlockedWeapons } from './weapons';
 import type { DamageText, Enemy, GamePhase, GameState, HealthPickup, InputState, MultiplayerGameState, PlayerRuntime, Projectile, RewardChest, Telegraph, UpgradeOption, Vector, Viewport, Weapon } from './types';
 
@@ -61,7 +62,6 @@ export interface GameSnapshot {
   dash: { charges: number; maxCharges: number; rechargeRemaining: number; rechargeDuration: number };
 }
 
-const MIN_SPAWN_INTERVAL = 0.26;
 const MAX_PARTICLES = 220;
 const MAX_DAMAGE_TEXTS = 90;
 const MAX_TELEGRAPHS = 24;
@@ -104,6 +104,12 @@ export class GameEngine {
   private healthBarGradients = new Map<string, CanvasGradient>();
   private vignetteGradient: CanvasGradient | null = null;
   private vignetteGradientKey = '';
+  private lowHpVignetteGradient: CanvasGradient | null = null;
+  private lowHpVignetteKey = '';
+  // Exhaust-plume gradients keyed by `${plumeIndex}:${roundedLength}`. The plume
+  // length throbs every frame but quantizing to integer px yields a tiny set of
+  // reusable gradients; per-frame alpha is applied via globalAlpha instead.
+  private exhaustGradients = new Map<string, CanvasGradient>();
   private dashTrail: Array<{ x: number; y: number; t: number }> = [];
   private dashHitPulseCounter = 0;
   private static readonly DASH_TRAIL_LIFE = 0.25;
@@ -332,8 +338,10 @@ export class GameEngine {
       return;
     }
 
-    // Apply time scale for effects like level-up slow-mo
-    const scaledDt = cappedDt * this.state.timeScale;
+    // Apply time scale for effects like level-up slow-mo. Re-cap so sub-modules
+    // always receive dt <= 0.05 even if timeScale climbs above 1 in the future
+    // (prevents physics tunneling — see CLAUDE.md hot-path rules).
+    const scaledDt = Math.min(0.05, cappedDt * this.state.timeScale);
 
     // Ramp timeScale back toward 1.0 (using raw dt, not scaled dt)
     if (this.state.timeScale < 1.0) {
@@ -446,6 +454,9 @@ export class GameEngine {
       this.healthBarGradients.clear();
       this.vignetteGradient = null;
       this.vignetteGradientKey = '';
+      this.lowHpVignetteGradient = null;
+      this.lowHpVignetteKey = '';
+      this.exhaustGradients.clear();
     }
     this.glowScale = this.getGlowScale();
     this.fastRender = this.performanceMode || this.glowScale === 0;
@@ -568,41 +579,31 @@ export class GameEngine {
       return;
     }
 
-    const tier = this.state.difficultyTier;
-    const interval = Math.max(MIN_SPAWN_INTERVAL, 1.35 - tier * 0.06);
-    const packSize = 1 + Math.floor(tier / 2) + (this.rng() < Math.min(0.7, tier * 0.08) ? 1 : 0);
-    const viewport = this.getViewport(160);
+    // Solo is uncapped (maxEnemies: Infinity); the authoritative GameSim passes
+    // a finite cap. Spawn + curse logic is shared (src/game/simulation.ts).
+    const { enemies, interval } = computeSpawnPack({
+      elapsed: this.state.elapsed,
+      tier: this.state.difficultyTier,
+      curseStacks: this.state.enemyCurseStacks,
+      viewport: this.getViewport(160),
+      rng: this.rng,
+      currentEnemyCount: this.state.enemies.length,
+      maxEnemies: Infinity,
+    });
 
-    for (let index = 0; index < packSize; index += 1) {
-      const type = chooseEnemyType(this.state.elapsed, tier, this.rng);
-      this.state.enemies.push(this.applyCurseToEnemy(spawnEnemyOutsideViewport(type, viewport, tier, this.rng)));
+    for (const enemy of enemies) {
+      this.state.enemies.push(enemy);
     }
 
     this.spawnTimer = interval;
   }
 
   private applyCurseToEnemy(enemy: Enemy): Enemy {
-    if (this.state.enemyCurseStacks <= 0 || enemy.rank === 'boss') {
-      return enemy;
-    }
-
-    const scale = 1 + this.state.enemyCurseStacks * 0.08;
-    return {
-      ...enemy,
-      speed: Math.round(enemy.speed * scale),
-      damage: Math.round(enemy.damage * scale)
-    };
+    return curseEnemy(enemy, this.state.enemyCurseStacks);
   }
 
   private applyCurseToExistingEnemies(): void {
-    for (const enemy of this.state.enemies) {
-      if (enemy.rank === 'boss') {
-        continue;
-      }
-
-      enemy.speed = Math.round(enemy.speed * 1.08);
-      enemy.damage = Math.round(enemy.damage * 1.08);
-    }
+    curseExistingEnemies(this.state.enemies);
   }
 
   private updateObjectives(dt: number): void {
@@ -700,7 +701,7 @@ export class GameEngine {
         continue;
       }
 
-      projectiles.push(...fireWeaponAtTarget(weapon, this.state.player, target));
+      projectiles.push(...fireWeaponAtTarget(weapon, this.state.player, target, this.rng));
       weapon.cooldown = Math.max(weapon.evolved ? 0.1 : 0.16, weapon.fireRate * Math.pow(weapon.evolved ? 0.8 : 0.88, weapon.level - 1));
       // 2h: Muzzle flash for projectile weapons
       this.spawnMuzzleFlash(weapon);
@@ -966,10 +967,10 @@ export class GameEngine {
               this.state.particles.push({
                 id: `bd-${i}-${this.state.elapsed}`,
                 position: { ...enemy.position },
-                velocity: { x: Math.cos(angle) * (80 + Math.random() * 120), y: Math.sin(angle) * (80 + Math.random() * 120) },
-                radius: 3 + Math.random() * 4,
+                velocity: { x: Math.cos(angle) * (80 + this.rng() * 120), y: Math.sin(angle) * (80 + this.rng() * 120) },
+                radius: 3 + this.rng() * 4,
                 color: '#ff335f',
-                life: 0.8 + Math.random() * 0.4,
+                life: 0.8 + this.rng() * 0.4,
                 maxLife: 1.2
               });
             }
@@ -982,10 +983,10 @@ export class GameEngine {
               this.state.particles.push({
                 id: `td-${i}-${this.state.elapsed}`,
                 position: { ...enemy.position },
-                velocity: { x: Math.cos(angle) * (40 + Math.random() * 60), y: Math.sin(angle) * (40 + Math.random() * 60) },
-                radius: 5 + Math.random() * 3,
+                velocity: { x: Math.cos(angle) * (40 + this.rng() * 60), y: Math.sin(angle) * (40 + this.rng() * 60) },
+                radius: 5 + this.rng() * 3,
                 color: i % 2 === 0 ? '#a78bfa' : '#94a3b8',
-                life: 0.6 + Math.random() * 0.3,
+                life: 0.6 + this.rng() * 0.3,
                 maxLife: 0.9
               });
             }
@@ -1054,7 +1055,7 @@ export class GameEngine {
 
   private updateHealthPickups(dt: number): void {
     const pickups = this.state.healthPickups;
-    const player = this.state.player;
+    let player = this.state.player;
     const magnetRange = player.pickupRadius * 3.2;
     const magnetRangeSq = magnetRange * magnetRange;
     const collectRadius = player.radius + player.pickupRadius * 0.14;
@@ -1075,7 +1076,11 @@ export class GameEngine {
       }
 
       if (circlesOverlapSq(pickup.position, pickup.radius, player.position, collectRadius)) {
-        player.health = Math.min(player.maxHealth, player.health + pickup.heal);
+        // Immutable reassignment — sub-state is never mutated in place (see
+        // CLAUDE.md state-mutation rules). `player` is rebound for the rest of
+        // this loop so later pickups stack correctly within the same frame.
+        player = { ...player, health: Math.min(player.maxHealth, player.health + pickup.heal) };
+        this.state.player = player;
         continue;
       }
 
@@ -1174,13 +1179,12 @@ export class GameEngine {
   }
 
   private creditWallet(won: boolean): void {
-    const reward = calculateRunReward(this.state.stats, won);
-    this.state.lastRunReward = reward;
-    const wallet = loadWallet();
-    saveWallet({
-      shards: wallet.shards + reward,
-      lifetimeEarned: wallet.lifetimeEarned + reward,
-    });
+    // Idempotent: the run reward is credited exactly once per run regardless of
+    // how many phase transitions or duplicate end-state checks occur (see
+    // CLAUDE.md). `walleted` resets with the rest of state on startRun().
+    if (this.state.walleted) return;
+    this.state.walleted = true;
+    this.state.lastRunReward = creditRunReward(this.state.stats, won);
   }
 
   private createDamageText(enemy: Enemy, amount: number, color: string): DamageText {
@@ -1217,7 +1221,7 @@ export class GameEngine {
 
     for (let i = 0; i < Math.min(slots, particleCount); i++) {
       const angle = (i / particleCount) * Math.PI * 2;
-      const speed = 200 + Math.random() * 150;
+      const speed = 200 + this.rng() * 150;
       this.state.particles.push({
         id: `levelup-${this.state.elapsed}-${i}`,
         position: { ...this.state.player.position },
@@ -1225,7 +1229,7 @@ export class GameEngine {
           x: Math.cos(angle) * speed,
           y: Math.sin(angle) * speed - 50  // upward bias for fountain effect
         },
-        radius: 3 + Math.random() * 2,
+        radius: 3 + this.rng() * 2,
         color: '#5eead4',  // cyan
         life: 0.7,
         maxLife: 0.7
@@ -1244,7 +1248,7 @@ export class GameEngine {
     const slots = MAX_PARTICLES - this.state.particles.length;
 
     for (let f = 0; f < Math.min(slots, 3); f++) {
-      const angle = Math.random() * Math.PI * 2;
+      const angle = this.rng() * Math.PI * 2;
       this.state.particles.push({
         id: `mf-${weapon.id}-${f}-${this.state.elapsed}`,
         position: { ...this.state.player.position },
@@ -2208,13 +2212,25 @@ export class GameEngine {
         [-r * 0.72, -r * 0.16, 0.9],   // port engine
         [-r * 0.72, r * 0.16, 0.9],    // starboard engine
       ];
-      for (const [px, py, scale] of plumes) {
+      for (let pi = 0; pi < plumes.length; pi += 1) {
+        const [px, py, scale] = plumes[pi];
         const len = r * 0.7 * scale * throb;
-        const grad = ctx.createRadialGradient(px - len * 0.4, py, 0, px - len * 0.4, py, len);
-        grad.addColorStop(0, `rgba(220,240,255,${0.85 * throb})`);
-        grad.addColorStop(0.35, `rgba(120,180,255,${0.5 * throb})`);
-        grad.addColorStop(0.7, `rgba(60,120,220,${0.18 * throb})`);
-        grad.addColorStop(1, 'rgba(40,80,200,0)');
+        // Quantize the throbbing length so a handful of gradients are reused
+        // across frames instead of allocating three per frame. The throb-driven
+        // alpha is reapplied via globalAlpha (all stop alphas scale linearly).
+        const lenKey = Math.max(1, Math.round(len));
+        const cacheKey = `${pi}:${lenKey}`;
+        let grad = this.exhaustGradients.get(cacheKey);
+        if (!grad) {
+          const cx = px - lenKey * 0.4;
+          grad = ctx.createRadialGradient(cx, py, 0, cx, py, lenKey);
+          grad.addColorStop(0, 'rgba(220,240,255,0.85)');
+          grad.addColorStop(0.35, 'rgba(120,180,255,0.5)');
+          grad.addColorStop(0.7, 'rgba(60,120,220,0.18)');
+          grad.addColorStop(1, 'rgba(40,80,200,0)');
+          this.exhaustGradients.set(cacheKey, grad);
+        }
+        ctx.globalAlpha = throb;
         ctx.fillStyle = grad;
         if (this.glowScale > 0) {
           ctx.shadowColor = '#7ec8ff';
@@ -2224,6 +2240,7 @@ export class GameEngine {
         ctx.ellipse(px - len * 0.35, py, len * 0.55, r * 0.16 * scale, 0, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
       ctx.restore();
     }
@@ -2450,21 +2467,36 @@ export class GameEngine {
     ctx.fillStyle = this.getVignetteGradient(ctx);
     ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
 
-    // 2f: Low HP canvas vignette
+    // 2f: Low HP canvas vignette. The gradient geometry is invariant per canvas
+    // size, so it is cached once; only the per-frame pulse alpha varies, applied
+    // via globalAlpha rather than rebuilding the gradient every frame.
     const hp = this.state.player.health / this.state.player.maxHealth;
     if (hp < 0.25) {
       const intensity = (0.25 - hp) / 0.25;
       const pulse = 0.5 + 0.5 * Math.sin(this.state.elapsed * 6);
       const alpha = intensity * pulse * 0.35;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = this.getLowHpVignetteGradient(ctx);
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.restore();
+    }
+  }
+
+  private getLowHpVignetteGradient(ctx: CanvasRenderingContext2D): CanvasGradient {
+    const key = `${ctx.canvas.width}x${ctx.canvas.height}`;
+    if (!this.lowHpVignetteGradient || this.lowHpVignetteKey !== key) {
       const grad = ctx.createRadialGradient(
         ctx.canvas.width / 2, ctx.canvas.height / 2, ctx.canvas.height * 0.3,
         ctx.canvas.width / 2, ctx.canvas.height / 2, ctx.canvas.height * 0.85
       );
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, `rgba(255,51,95,${alpha})`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      // Full-alpha stops; the per-frame intensity is applied with globalAlpha.
+      grad.addColorStop(0, 'rgba(255,51,95,0)');
+      grad.addColorStop(1, 'rgba(255,51,95,1)');
+      this.lowHpVignetteGradient = grad;
+      this.lowHpVignetteKey = key;
     }
+    return this.lowHpVignetteGradient;
   }
 
   private drawRadialGlow(ctx: CanvasRenderingContext2D, innerR: number, outerR: number, innerColor: string, outerColor = 'rgba(0,0,0,0)'): void {

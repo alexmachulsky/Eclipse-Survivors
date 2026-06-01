@@ -277,6 +277,7 @@ export interface GameState {
   bannedUpgradeIds: string[];    // banished upgrade ids — persist for the whole run
   lockedSlot: number | null;     // index of the card locked across rerolls (null = none)
   lastRunReward: number;         // shards earned on the most recent game-end transition (0 until run ends)
+  walleted: boolean;             // guard: the run reward is credited to the wallet exactly once
 }
 
 export interface PlayerRuntime {

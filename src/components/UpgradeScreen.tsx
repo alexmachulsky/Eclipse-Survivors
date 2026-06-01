@@ -129,7 +129,7 @@ export function UpgradeScreen({
         <div className="upgrade-grid">
           {choices.map((choice, i) => (
             <BoonCard
-              key={`${i}-${choice.id}`}
+              key={choice.id}
               choice={choice}
               index={i}
               isLocked={lockedSlot === i}

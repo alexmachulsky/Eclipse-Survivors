@@ -31,10 +31,10 @@ export function findNearestEnemy(enemies: Enemy[], position: { x: number; y: num
   return nearest;
 }
 
-export function fireWeaponAtTarget(weapon: Weapon, player: Player, target: Enemy): Projectile[] {
+export function fireWeaponAtTarget(weapon: Weapon, player: Player, target: Enemy, rng: () => number = Math.random): Projectile[] {
   const def = WEAPONS[weapon.id];
   if (!def) return [];
-  return def.fire({ weapon, player, target, rng: Math.random });
+  return def.fire({ weapon, player, target, rng });
 }
 
 export function createAreaPulse(weapon: Weapon, player: Player): Projectile {

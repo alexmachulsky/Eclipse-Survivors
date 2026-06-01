@@ -181,6 +181,10 @@ export function createChestRewardChoices(
   return choices;
 }
 
+export function getXpThreshold(level: number): number {
+  return Math.round(7 + level * 3.5 + Math.pow(level, 1.25) * 2.2);
+}
+
 export function applyEvolution(weapons: Weapon[], evolutionId: string): Weapon[] {
   const evolution = EVOLUTION_REGISTRY[evolutionId];
 

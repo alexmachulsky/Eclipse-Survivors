@@ -13,9 +13,12 @@ coverage/
 .env
 .env.*
 
-# Markdown docs — only README.md is kept in the repo
+# Markdown docs — only README.md and CLAUDE.md are kept in the repo so a fresh
+# clone carries the project's conventions/invariants. (AGENTS.md is left
+# disk-only: it predates the content-registry refactor and the LAN ship.)
 *.md
 !README.md
+!CLAUDE.md
 
 # AI agent / model config files and directories
 .codex

@@ -1,5 +1,6 @@
 import { angleTo, circlesOverlapSq, clamp, distanceSq, vectorFromAngle } from './collisions';
 import { chooseEnemyType, getBossSpawn, spawnEnemyOutsideViewport, updateEnemies } from './enemies';
+import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, computeSpawnPack } from './simulation';
 import { createDeathParticles, createXpGem, updateParticles } from './particles';
 import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { startDash, tickDashCooldown, tickDashMotion, resolveDashHits, tryQueueDash, consumeDashQueue } from './dash';
@@ -14,7 +15,7 @@ import {
 } from './runDirector';
 import { SpatialGrid } from './spatialGrid';
 import { createInitialGameState, createStartingPlayer, createStartingWeapons } from './state';
-import { getXpThreshold } from './upgrades';
+import { getXpThreshold } from './rewards';
 import { createAreaPulse, createStarfallSparks, findNearestEnemy, fireWeaponAtTarget } from './weapons';
 import type {
   DamageText,
@@ -35,7 +36,6 @@ import type {
 
 const MAX_PLAYERS = 4;
 const PLAYER_COLORS = ['#5eead4', '#ffd166', '#ff5edb', '#a78bfa'];
-const MIN_SPAWN_INTERVAL = 0.26;
 const MAX_PARTICLES = 220;
 const MAX_DAMAGE_TEXTS = 90;
 const MAX_TELEGRAPHS = 24;
@@ -400,44 +400,32 @@ export class GameSim {
       return;
     }
 
-    const tier = this.state.difficultyTier;
-    const interval = Math.max(MIN_SPAWN_INTERVAL, 1.35 - tier * 0.06);
-    const packSize = 1 + Math.floor(tier / 2) + (this.rng() < Math.min(0.7, tier * 0.08) ? 1 : 0);
-    const viewport = this.getSharedViewport(160);
+    // Shared spawn + curse logic (src/game/simulation.ts) — kept identical to
+    // the solo GameEngine so server and client cannot drift. The server passes
+    // the finite population cap; solo runs uncapped.
+    const { enemies, interval } = computeSpawnPack({
+      elapsed: this.state.elapsed,
+      tier: this.state.difficultyTier,
+      curseStacks: this.state.enemyCurseStacks,
+      viewport: this.getSharedViewport(160),
+      rng: this.rng,
+      currentEnemyCount: this.state.enemies.length,
+      maxEnemies: MAX_ENEMIES,
+    });
 
-    for (let index = 0; index < packSize; index += 1) {
-      if (this.state.enemies.length >= MAX_ENEMIES) {
-        break;
-      }
-      const type = chooseEnemyType(this.state.elapsed, tier, this.rng);
-      this.state.enemies.push(this.applyCurseToEnemy(spawnEnemyOutsideViewport(type, viewport, tier, this.rng)));
+    for (const enemy of enemies) {
+      this.state.enemies.push(enemy);
     }
 
     this.spawnTimer = interval;
   }
 
   private applyCurseToEnemy(enemy: Enemy): Enemy {
-    if (this.state.enemyCurseStacks <= 0 || enemy.rank === 'boss') {
-      return enemy;
-    }
-
-    const scale = 1 + this.state.enemyCurseStacks * 0.08;
-    return {
-      ...enemy,
-      speed: Math.round(enemy.speed * scale),
-      damage: Math.round(enemy.damage * scale)
-    };
+    return curseEnemy(enemy, this.state.enemyCurseStacks);
   }
 
   private applyCurseToExistingEnemies(): void {
-    for (const enemy of this.state.enemies) {
-      if (enemy.rank === 'boss') {
-        continue;
-      }
-
-      enemy.speed = Math.round(enemy.speed * 1.08);
-      enemy.damage = Math.round(enemy.damage * 1.08);
-    }
+    curseExistingEnemies(this.state.enemies);
   }
 
   private updateObjectives(dt: number): void {
@@ -557,7 +545,7 @@ export class GameSim {
           continue;
         }
 
-        const fired = fireWeaponAtTarget(weapon, runtime.player, target);
+        const fired = fireWeaponAtTarget(weapon, runtime.player, target, this.rng);
         for (const projectile of fired) {
           if (projectiles.length >= MAX_PLAYER_PROJECTILES) {
             break;
@@ -1105,7 +1093,7 @@ export class GameSim {
     for (let index = 0; index < Math.min(slots, count); index += 1) {
       const angle = this.rng() * Math.PI * 2;
       this.state.particles.push({
-        id: `burst-${this.state.elapsed}-${index}-${this.rng()}`,
+        id: `burst-${this.state.elapsed}-${index}`,
         position: { ...position },
         velocity: vectorFromAngle(angle, 80 + this.rng() * 220),
         radius: 2 + this.rng() * 5,

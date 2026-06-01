@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { Hud } from './components/Hud';
 import { LanGameCanvas } from './components/LanGameCanvas';
@@ -9,6 +9,7 @@ import { GameEngine, type GameSnapshot } from './game/GameEngine';
 import { clamp } from './game/collisions';
 import { getActLabel } from './game/runDirector';
 import { saveRunRecord } from './game/persistence';
+import { creditRunReward } from './game/wallet';
 import type { MultiplayerGameState, PlayerCommand, PlayerRuntime } from './game/types';
 import { getUnlockedWeapons } from './game/weapons';
 
@@ -104,6 +105,9 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [lanScreen, setLanScreen] = useState<LanScreen>('chooser');
   const [lanError, setLanError] = useState<string | null>(null);
+  // Shards earned on the most recent LAN run-end. LAN runs on the server, so the
+  // client credits its own wallet and surfaces the amount on the end screen.
+  const [lanRunReward, setLanRunReward] = useState(0);
 
   // Throttled HUD/overlay snapshot. Decoupled from `lanSnapshot` (which feeds
   // the canvas at full 30 Hz) so the HUD re-renders at ~12 Hz instead of 30 Hz.
@@ -113,27 +117,44 @@ export default function App() {
   // run) we push the HUD update immediately rather than waiting for the timer.
   const hudKeyRef = useRef<string | null>(null);
 
-  // Reset savedRef when starting a new run
+  // The snapshot the HUD/overlays read from: server-derived in LAN, engine
+  // snapshot in solo. Memoized so React.memo(Hud) actually skips re-renders when
+  // the underlying value is unchanged (the inline ternary changed identity).
+  const activeSnapshot = useMemo(
+    () => (mode === 'lan' ? hudSnapshot : snapshot),
+    [mode, hudSnapshot, snapshot]
+  );
+
+  // Reset savedRef when starting a new run. Mode-aware: in LAN the live phase
+  // lives on hudSnapshot, not snapshot (which stays frozen at the menu).
   useEffect(() => {
-    if (snapshot.phase === 'menu' || snapshot.phase === 'playing' || snapshot.phase === 'paused' || snapshot.phase === 'levelUp' || snapshot.phase === 'chestReward') {
+    const phase = activeSnapshot.phase;
+    if (phase === 'menu' || phase === 'playing' || phase === 'paused' || phase === 'levelUp' || phase === 'chestReward') {
       savedRef.current = false;
     }
-  }, [snapshot.phase]);
+  }, [activeSnapshot.phase]);
 
-  // Save run record when game ends
+  // Save run record when a game ends — for BOTH solo and LAN. In LAN the engine
+  // never reaches an end-state (the server is authoritative), so without this
+  // every LAN completion was lost: no run history and no shard credit.
   useEffect(() => {
-    if ((snapshot.phase === 'gameOver' || snapshot.phase === 'victory') && !savedRef.current) {
+    if ((activeSnapshot.phase === 'gameOver' || activeSnapshot.phase === 'victory') && !savedRef.current) {
       savedRef.current = true;
       const weaponTitles = ['Magic Bolt', 'Astral Orbit', 'Area Pulse', 'Piercing Arrow', 'Starfall Lance', 'Gravitic Halo', 'Supernova Bloom', 'Comet Volley'];
       saveRunRecord({
-        timeSurvived: snapshot.stats.timeSurvived,
-        kills: snapshot.stats.kills,
-        level: snapshot.level,
-        damageDealt: snapshot.stats.damageDealt,
-        weaponPath: snapshot.upgradeHistory.filter(t => weaponTitles.some(w => t.includes(w))),
+        timeSurvived: activeSnapshot.stats.timeSurvived,
+        kills: activeSnapshot.stats.kills,
+        level: activeSnapshot.level,
+        damageDealt: activeSnapshot.stats.damageDealt,
+        weaponPath: activeSnapshot.upgradeHistory.filter(t => weaponTitles.some(w => t.includes(w))),
       });
+      // Solo credits the wallet inside the engine (GameEngine.creditWallet).
+      // LAN runs on the server, so the client credits its own wallet here.
+      if (mode === 'lan') {
+        setLanRunReward(creditRunReward(activeSnapshot.stats, activeSnapshot.phase === 'victory'));
+      }
     }
-  }, [snapshot.phase, snapshot.stats, snapshot.level, snapshot.upgradeHistory]);
+  }, [activeSnapshot.phase, activeSnapshot.stats, activeSnapshot.level, activeSnapshot.upgradeHistory, mode]);
 
   const handleReady = useCallback((engine: GameEngine) => {
     engineRef.current = engine;
@@ -319,7 +340,6 @@ export default function App() {
     }
   }, []);
 
-  const activeSnapshot = mode === 'lan' ? hudSnapshot : snapshot;
   const lanPlayers: PlayerRuntime[] = lanSnapshot?.state.players ?? [];
   const showLanLobby = mode === 'lan' && lanScreen === 'lobby' && lanSnapshot?.room.phase === 'lobby';
   const showLanSetup = mode === 'lan' && lanScreen !== 'lobby';
@@ -354,8 +374,8 @@ export default function App() {
         )}
         {lanScreen === 'lobby' && activeSnapshot.phase === 'levelUp' && <UpgradeScreen title="Choose a boon" label="Level Up" choices={activeSnapshot.upgradeChoices} onChoose={chooseUpgrade} />}
         {lanScreen === 'lobby' && activeSnapshot.phase === 'chestReward' && <UpgradeScreen title="Open the chest" label="Chest Reward" choices={activeSnapshot.pendingChestChoices} onChoose={chooseUpgrade} />}
-        {lanScreen === 'lobby' && activeSnapshot.phase === 'gameOver' && <EndScreen snapshot={activeSnapshot} onRestart={restart} />}
-        {lanScreen === 'lobby' && activeSnapshot.phase === 'victory' && <EndScreen snapshot={activeSnapshot} onRestart={restart} victory />}
+        {lanScreen === 'lobby' && activeSnapshot.phase === 'gameOver' && <EndScreen snapshot={{ ...activeSnapshot, lastRunReward: lanRunReward }} onRestart={restart} />}
+        {lanScreen === 'lobby' && activeSnapshot.phase === 'victory' && <EndScreen snapshot={{ ...activeSnapshot, lastRunReward: lanRunReward }} onRestart={restart} victory />}
       </main>
     );
   };

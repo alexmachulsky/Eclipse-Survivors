@@ -33,7 +33,7 @@ export function WeaponTile({ weapon, isActive }: { weapon: Weapon; isActive: boo
   );
 }
 
-function DashPips({ dash }: { dash: GameSnapshot['dash'] }) {
+const DashPips = memo(function DashPips({ dash }: { dash: GameSnapshot['dash'] }) {
   const pips: React.ReactNode[] = [];
   for (let i = 0; i < dash.maxCharges; i++) {
     const filled = i < dash.charges;
@@ -50,7 +50,7 @@ function DashPips({ dash }: { dash: GameSnapshot['dash'] }) {
     );
   }
   return <div className="dash-pips" aria-label="Dash charges">{pips}</div>;
-}
+});
 
 export const Hud = memo(function Hud({ snapshot, onPause }: HudProps) {
   const healthRatio = Math.max(0, snapshot.health / snapshot.maxHealth);

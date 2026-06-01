@@ -3,7 +3,7 @@ import { circlesOverlap, circlesOverlapSq, normalizeVector } from './collisions'
 import { SpatialGrid } from './spatialGrid';
 import { updatePlayerMovement } from './player';
 import { spawnEnemyOutsideViewport, scaleEnemyStats } from './enemies';
-import { getXpThreshold } from './upgrades';
+import { getXpThreshold } from './rewards';
 import {
   applyUpgrade,
   applyEvolution,
@@ -1181,6 +1181,7 @@ describe('weapons registry fire() round-trip', () => {
 
 import { PASSIVES as PASSIVES_REGISTRY } from './content/passives.registry';
 import { EVOLUTIONS as EVOLUTIONS_REGISTRY } from './content/evolutions.registry';
+import { PASSIVES as PASSIVES_CONTENT } from './content';
 import { createInitialGameState } from './state';
 
 describe('GameEngine reroll/banish/lock commands', () => {
@@ -1324,6 +1325,49 @@ describe('wallet', () => {
     expect(w.shards).toBe(123);
     expect(w.lifetimeEarned).toBe(456);
   });
+
+  it('loadWallet sanitizes negative, NaN and non-number balances to 0', () => {
+    localStorage.setItem('eclipse-survivors:wallet', JSON.stringify({ shards: -9999, lifetimeEarned: 5 }));
+    expect(loadWallet().shards).toBe(0);
+    expect(loadWallet().lifetimeEarned).toBe(5);
+
+    localStorage.setItem('eclipse-survivors:wallet', JSON.stringify({ shards: 'lots', lifetimeEarned: null }));
+    expect(loadWallet().shards).toBe(0);
+    expect(loadWallet().lifetimeEarned).toBe(0);
+  });
+
+  it('creditWallet credits a finished run exactly once (idempotent)', () => {
+    const engine = new GameEngine(() => 0.5);
+    engine.startRun();
+    const eng = engine as unknown as {
+      state: { stats: { timeSurvived: number; kills: number; level: number } };
+      creditWallet(won: boolean): void;
+    };
+    eng.state.stats.timeSurvived = 100;
+    eng.state.stats.kills = 40;
+    eng.state.stats.level = 5;
+
+    eng.creditWallet(false);
+    const first = loadWallet().shards;
+    expect(first).toBeGreaterThan(0);
+
+    // A second call (e.g. a duplicate phase transition) must not double-credit.
+    eng.creditWallet(false);
+    expect(loadWallet().shards).toBe(first);
+  });
+});
+
+describe('dt capping', () => {
+  it('re-caps dt after timeScale so a long frame cannot tunnel physics', () => {
+    const engine = new GameEngine(() => 0.5);
+    engine.startRun();
+    // Exaggerate timeScale; the scaledDt re-cap must still clamp to <= 0.05.
+    (engine as unknown as { state: { timeScale: number } }).state.timeScale = 5;
+    const before = engine.getSnapshot().elapsed;
+    engine.update(10); // absurd dt (e.g. tab wake-up)
+    const elapsed = engine.getSnapshot().elapsed - before;
+    expect(elapsed).toBeLessThanOrEqual(0.05 + 1e-9);
+  });
 });
 
 describe('GameSnapshot agency fields', () => {
@@ -1370,11 +1414,19 @@ describe('evolutions registry', () => {
 });
 
 describe('passives registry', () => {
-  it('has identical metadata to the content.ts PASSIVES array', () => {
-    const ids = ['cooldown-sigil', 'astral-lens', 'void-core', 'keen-fletching'];
-    for (const id of ids) {
-      expect(PASSIVES_REGISTRY[id]).toBeDefined();
-      expect(PASSIVES_REGISTRY[id].maxLevel).toBe(5);
+  it('stays fully in sync with the content.ts PASSIVES card metadata', () => {
+    // The two lists MUST share the exact same ids: a passive only in the
+    // registry is never offered as a level-up card (dead content), and one only
+    // in content.ts has no effect. This iterates the full set rather than a
+    // hardcoded subset so a future divergence cannot slip through.
+    const registryIds = Object.keys(PASSIVES_REGISTRY).sort();
+    const contentIds = PASSIVES_CONTENT.map((p) => p.id).slice().sort();
+    expect(contentIds).toEqual(registryIds);
+
+    for (const def of PASSIVES_CONTENT) {
+      const reg = PASSIVES_REGISTRY[def.id];
+      expect(reg, `registry missing passive ${def.id}`).toBeDefined();
+      expect(reg.maxLevel, `maxLevel mismatch for ${def.id}`).toBe(def.maxLevel);
     }
   });
 
