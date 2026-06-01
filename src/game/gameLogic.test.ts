@@ -372,10 +372,126 @@ describe('core game logic', () => {
         radius: 5,
         fillStyle: runtime.color
       });
+
+      // ...and the breathing glow halo that replaced it IS drawn: a
+      // gradient-filled arc at the ship origin. glowScale defaults to 1 and the
+      // runtime is active, so the halo branch runs even under fastRender. If the
+      // halo were accidentally removed this assertion fails.
+      expect(
+        recording.arcs.some(
+          (arc) => arc.x === 0 && arc.y === 0 && arc.radius > 0 && arc.fillStyle === '[gradient]'
+        )
+      ).toBe(true);
     } finally {
       __resetRenderAssetsForTests();
       canvasStub.restore();
     }
+  });
+
+  it('fires non-boss ranged enemy shots at the tuned speed (130) and radius (8)', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      startRun: () => void;
+      update: (dt: number) => void;
+      spawnTimer: number;
+      state: { player: { position: { x: number; y: number } }; enemies: Enemy[]; enemyProjectiles: Projectile[] };
+    };
+
+    engine.startRun();
+    engine.spawnTimer = Number.POSITIVE_INFINITY;
+    const origin = engine.state.player.position;
+    engine.state.enemies.push({
+      id: 'ranged-test',
+      type: 'ranged',
+      rank: 'normal',
+      position: { x: origin.x + 180, y: origin.y },
+      velocity: { x: 0, y: 0 },
+      radius: 14,
+      maxHealth: 30,
+      health: 30,
+      speed: 0,
+      damage: 7,
+      xpValue: 3,
+      color: '#ffd166',
+      cooldown: 0,
+      hitFlash: 0
+    });
+
+    engine.update(1 / 60);
+
+    const shot = engine.state.enemyProjectiles.find((projectile) => projectile.owner === 'enemy');
+    expect(shot).toBeDefined();
+    expect(Math.hypot(shot!.velocity.x, shot!.velocity.y)).toBeCloseTo(130, 4);
+    expect(shot!.radius).toBe(8);
+  });
+
+  it('fires non-boss ranged enemy shots at the same tuned speed/radius in GameSim (engine parity)', () => {
+    const sim = new GameSim(() => 0.5);
+    const runtime = sim.addPlayer('Solo');
+    sim.startRun();
+    runtime.status = 'active';
+    runtime.player.position = { x: 1000, y: 1000 };
+    sim.getState().enemies.push({
+      id: 'ranged-test',
+      type: 'ranged',
+      rank: 'normal',
+      position: { x: 1180, y: 1000 },
+      velocity: { x: 0, y: 0 },
+      radius: 14,
+      maxHealth: 30,
+      health: 30,
+      speed: 0,
+      damage: 7,
+      xpValue: 3,
+      color: '#ffd166',
+      cooldown: 0,
+      hitFlash: 0
+    });
+
+    sim.update(1 / 60);
+
+    const shot = sim
+      .getState()
+      .enemyProjectiles.find((projectile) => projectile.id.startsWith('enemy-shot-ranged-test'));
+    expect(shot).toBeDefined();
+    expect(Math.hypot(shot!.velocity.x, shot!.velocity.y)).toBeCloseTo(130, 4);
+    expect(shot!.radius).toBe(8);
+  });
+
+  it('collects gems out to 3.2x the gem radius (enlarged pickup hitbox)', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as {
+      startRun: () => void;
+      update: (dt: number) => void;
+      spawnTimer: number;
+      state: {
+        player: { position: { x: number; y: number }; radius: number; pickupRadius: number };
+        gems: Array<{ id: string; position: { x: number; y: number }; value: number; radius: number; color: string; life: number }>;
+        xp: number;
+      };
+    };
+
+    engine.startRun();
+    engine.spawnTimer = Number.POSITIVE_INFINITY;
+    const player = engine.state.player;
+    const collectRadius = player.radius + player.pickupRadius * 0.16;
+    const gemRadius = 7;
+    // Distance sits between the old (1x) and new (3.2x) collection thresholds:
+    // not collectible with `gem.radius`, collectible with `gem.radius * 3.2`.
+    const distance = collectRadius + gemRadius * 2.5;
+    engine.state.gems.push({
+      id: 'gem-test',
+      position: { x: player.position.x + distance, y: player.position.y },
+      value: 1,
+      radius: gemRadius,
+      color: '#5eead4',
+      life: 0
+    });
+
+    // Tiny dt so the magnet barely nudges the gem (~0.7px): the collection
+    // check — not the magnet pull — is what decides the outcome this frame.
+    engine.update(0.001);
+
+    expect(engine.state.gems).toHaveLength(0);
+    expect(engine.state.xp).toBeGreaterThanOrEqual(1);
   });
 
   it('keeps squared-distance nearest targeting behavior compatible with previous range semantics', () => {

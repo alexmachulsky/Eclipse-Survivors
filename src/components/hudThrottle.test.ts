@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldRefreshHud } from './hudThrottle';
-
-const HUD_UPDATE_MS = 80;
+import { HUD_UPDATE_MS, shouldRefreshHud } from './hudThrottle';
 
 /**
  * Simulate the LAN snapshot stream arriving at a steady rate and count how many

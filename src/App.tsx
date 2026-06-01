@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { Hud } from './components/Hud';
 import { LanGameCanvas } from './components/LanGameCanvas';
-import { shouldRefreshHud } from './components/hudThrottle';
+import { HUD_UPDATE_MS, shouldRefreshHud } from './components/hudThrottle';
 import { EndScreen, LanLobby, LanSetup, MainMenu, PauseMenu } from './components/OverlayScreens';
 import { UpgradeScreen } from './components/UpgradeScreen';
 import { GameEngine, type GameSnapshot } from './game/GameEngine';
@@ -17,13 +17,6 @@ const initialSnapshot: GameSnapshot = new GameEngine().getSnapshot();
 // LAN has no client-side pause; a stable handler reference lets React.memo(Hud)
 // skip re-renders driven purely by the 30 Hz canvas snapshot stream.
 const LAN_NO_PAUSE = () => undefined;
-
-// The canvas consumes the full 30 Hz server snapshot stream (via its own rAF
-// loop + interpolation), but the React HUD/overlays only need a low refresh
-// rate. Re-rendering the HUD on every snapshot floods the main thread with
-// React work (render + effects + DOM) that competes with the canvas rAF and
-// drops frames. ~12 Hz is imperceptible for meters/timers and frees the loop.
-const HUD_UPDATE_MS = 80;
 
 type Mode = 'solo' | 'lan';
 
@@ -165,10 +158,13 @@ export default function App() {
     refreshSnapshot();
   };
 
-  const pauseRun = () => {
+  // useCallback keeps the reference stable so React.memo(Hud) is effective in
+  // solo mode too (LAN already uses the stable LAN_NO_PAUSE). refreshSnapshot is
+  // itself memoized with [], so this handler never changes identity.
+  const pauseRun = useCallback(() => {
     engineRef.current?.pause();
     refreshSnapshot();
-  };
+  }, [refreshSnapshot]);
 
   const chooseUpgrade = (upgradeId: string) => {
     if (mode === 'lan') {

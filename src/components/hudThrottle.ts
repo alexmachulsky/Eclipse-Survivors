@@ -17,6 +17,14 @@ export interface HudRefreshDecision {
   time: number;
 }
 
+/**
+ * Default HUD/overlay refresh interval (ms). ~80 ms (~12 Hz) is imperceptible
+ * for meters/timers yet frees the main thread from re-rendering on every 30 Hz
+ * snapshot. App.tsx (the consumer) and hudThrottle.test.ts both import this so
+ * the throttle window stays single-sourced — change it here and both follow.
+ */
+export const HUD_UPDATE_MS = 80;
+
 export function shouldRefreshHud(
   prevKey: string | null,
   prevTime: number,
