@@ -76,6 +76,8 @@ export interface LanServerHandle {
   listen: (port: number, host?: string) => Promise<void>;
   close: () => Promise<void>;
   cleanupDisconnectedPlayers: () => void;
+  /** Internal counters for tests/observability (room + connection bookkeeping). */
+  getStats: () => { rooms: number; clients: number; roomCreationWindows: number; pendingConnections: number };
 }
 
 const DEFAULT_PORT = Number(process.env.PORT ?? 3001);
@@ -647,13 +649,16 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
   }
 
   function handleHello(socket: WebSocket, raw: RawData, helloTimer: ReturnType<typeof setTimeout>, remoteAddress: string): void {
+    // A message arrived, so the hello deadline no longer applies. Clear the
+    // timer up-front — before any accept/reject path — so it can never fire
+    // later and call close() again on an already-rejected/closed socket.
+    clearTimeout(helloTimer);
+
     const message = parseMessage(raw);
     if (!message || message.type !== 'hello') {
       closeInvalid(socket);
       return;
     }
-
-    clearTimeout(helloTimer);
 
     // For an explicit create/join, ignore any stale reconnect token so the
     // user gets a fresh seat in the chosen room.
@@ -753,6 +758,14 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       if (roomHasConnectedClient(room)) continue;
       if (now - room.lastActivityAt < emptyRoomTtlMs) continue;
       deleteRoom(room);
+    }
+
+    // Prune expired per-IP room-creation windows. Without this, the map grows
+    // unbounded — one lingering entry per unique IP that ever created a room.
+    for (const [ip, window] of roomCreationWindows) {
+      if (now - window.startedAt >= roomCreationWindowMs) {
+        roomCreationWindows.delete(ip);
+      }
     }
   }
 
@@ -890,7 +903,13 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
         server.close(() => resolve());
       });
     }),
-    cleanupDisconnectedPlayers
+    cleanupDisconnectedPlayers,
+    getStats: () => ({
+      rooms: rooms.size,
+      clients: clients.size,
+      roomCreationWindows: roomCreationWindows.size,
+      pendingConnections: pendingByIp.size
+    })
   };
 }
 

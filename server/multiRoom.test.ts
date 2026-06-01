@@ -279,4 +279,24 @@ describe('multi-room LAN server', () => {
     first.close();
     await waitForClose(first);
   });
+
+  it('prunes expired room-creation windows so the map does not grow unbounded', async () => {
+    const { handle, url } = await listenWithOptions({ roomCreationWindowMs: 50 });
+
+    // Creating a room records a per-IP creation window entry.
+    const host = await openSocket(url);
+    const welcome = nextMessage<Welcome>(host, 'welcome');
+    host.send(JSON.stringify({ type: 'hello', name: 'Host', action: 'create', roomName: 'A' }));
+    await welcome;
+    expect(handle.getStats().roomCreationWindows).toBeGreaterThanOrEqual(1);
+
+    host.close();
+    await waitForClose(host);
+
+    // Once the window elapses, the cleanup pass must drop the stale entry
+    // rather than leaving one lingering forever per unique IP.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    handle.cleanupDisconnectedPlayers();
+    expect(handle.getStats().roomCreationWindows).toBe(0);
+  });
 });
