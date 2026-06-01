@@ -156,4 +156,100 @@ describe('LAN server security', () => {
       item.socket.close();
     }
   });
+
+  it('rejects command messages with a non-boolean dashHeld', async () => {
+    const { url } = await listen();
+    const { socket, playerId } = await join(url, 'Alpha');
+
+    socket.send(JSON.stringify({
+      type: 'command', playerId,
+      moveUp: false, moveDown: false, moveLeft: false, moveRight: false,
+      aimWorldX: 0, aimWorldY: 0, reviveHeld: false, dashHeld: 'yes'
+    }));
+
+    await expect(waitForClose(socket)).resolves.toBe(1003);
+  });
+
+  it('accepts a command with a valid boolean dashHeld', async () => {
+    const { url } = await listen();
+    const { socket, playerId } = await join(url, 'Alpha');
+
+    socket.send(JSON.stringify({
+      type: 'command', playerId,
+      moveUp: false, moveDown: false, moveLeft: false, moveRight: false,
+      aimWorldX: 0, aimWorldY: 0, reviveHeld: false, dashHeld: true
+    }));
+
+    const outcome = await Promise.race([
+      waitForClose(socket).then(() => 'closed'),
+      new Promise<string>((resolve) => setTimeout(() => resolve('open'), 100))
+    ]);
+    expect(outcome).toBe('open');
+    socket.close();
+  });
+
+  it('caps simultaneous pre-hello connections from a single IP', async () => {
+    const handle = createLanServer({ allowedOrigins: ['http://127.0.0.1'], maxPendingConnectionsPerIp: 2 });
+    handles.push(handle);
+    await handle.listen(0, '127.0.0.1');
+    const address = handle.server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected TCP server address');
+    }
+    const url = `ws://127.0.0.1:${address.port}/ws`;
+
+    // Two sockets that never send hello occupy the per-IP pending budget.
+    const s1 = await openSocket(url);
+    const s2 = await openSocket(url);
+    // The third exceeds the cap and is closed immediately by the server.
+    const s3 = await openSocket(url);
+
+    await expect(waitForClose(s3)).resolves.toBe(1013);
+    s1.close();
+    s2.close();
+  });
+
+  it('terminates joined clients that stop answering heartbeat pings', async () => {
+    const handle = createLanServer({ allowedOrigins: ['http://127.0.0.1'], heartbeatMs: 40 });
+    handles.push(handle);
+    await handle.listen(0, '127.0.0.1');
+    const address = handle.server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected TCP server address');
+    }
+    const url = `ws://127.0.0.1:${address.port}/ws`;
+
+    // autoPong: false makes this client ignore server pings, simulating a
+    // zombie/slowloris connection. The server must drop it within ~2 cycles.
+    const socket = await new Promise<WebSocket>((resolve, reject) => {
+      const s = new WebSocket(url, { headers: { Origin: 'http://127.0.0.1' }, autoPong: false });
+      s.once('open', () => resolve(s));
+      s.once('error', reject);
+    });
+    const welcome = waitForMessage(socket, 'welcome');
+    socket.send(JSON.stringify({ type: 'hello', name: 'Zombie' }));
+    await welcome;
+
+    await expect(waitForClose(socket)).resolves.toBeGreaterThanOrEqual(1000);
+  });
+
+  it('keeps responsive clients connected across heartbeats', async () => {
+    const handle = createLanServer({ allowedOrigins: ['http://127.0.0.1'], heartbeatMs: 40 });
+    handles.push(handle);
+    await handle.listen(0, '127.0.0.1');
+    const address = handle.server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected TCP server address');
+    }
+    const url = `ws://127.0.0.1:${address.port}/ws`;
+
+    // Default client auto-responds to pings, so it must survive several cycles.
+    const { socket } = await join(url, 'Alive');
+    const outcome = await Promise.race([
+      waitForClose(socket).then(() => 'closed'),
+      new Promise<string>((resolve) => setTimeout(() => resolve('open'), 200))
+    ]);
+    expect(outcome).toBe('open');
+    socket.close();
+  });
 });

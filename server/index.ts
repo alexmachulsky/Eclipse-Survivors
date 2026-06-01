@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server, type IncomingMessage } from 'node:http';
 import { randomUUID, randomInt } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
@@ -25,6 +25,8 @@ interface ClientConnection {
   commandCount: number;
   controlWindowStartedAt: number;
   controlCount: number;
+  /** Liveness flag for the ping/pong heartbeat; reset to false on each ping. */
+  isAlive: boolean;
 }
 
 interface SessionRecord {
@@ -65,6 +67,8 @@ export interface LanServerOptions {
   maxRoomCreationsPerWindow?: number;
   /** Window for per-remote-address room creation throttling. */
   roomCreationWindowMs?: number;
+  /** Max simultaneous pre-hello (unauthenticated) connections per client IP. */
+  maxPendingConnectionsPerIp?: number;
 }
 
 export interface LanServerHandle {
@@ -86,6 +90,7 @@ const DEFAULT_MAX_ROOMS = 32;
 const DEFAULT_MAX_CLIENTS = 128;
 const DEFAULT_MAX_ROOM_CREATIONS_PER_WINDOW = 8;
 const DEFAULT_ROOM_CREATION_WINDOW_MS = 60_000;
+const DEFAULT_MAX_PENDING_PER_IP = 16;
 const MAX_NAME_LENGTH = 24;
 const MAX_ROOM_NAME_LENGTH = 32;
 const ROOM_CODE_LENGTH = 4;
@@ -234,6 +239,28 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/**
+ * Resolve the real client IP. Behind the nginx reverse proxy (the only public
+ * entry point in the docker deployment) the raw socket address is the proxy's,
+ * so per-IP throttling collapses to a single bucket unless we read the
+ * proxy-set forwarding headers. nginx sets X-Real-IP / X-Forwarded-For; we
+ * trust them because the ws port is not publicly reachable except via nginx.
+ */
+function getClientIp(request: IncomingMessage): string {
+  const realIp = request.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim()) {
+    return realIp.trim();
+  }
+
+  const forwarded = request.headers['x-forwarded-for'];
+  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (typeof forwardedValue === 'string' && forwardedValue.trim()) {
+    return forwardedValue.split(',')[0].trim();
+  }
+
+  return request.socket.remoteAddress ?? 'unknown';
+}
+
 function parseMessage(raw: RawData): ClientMessage | null {
   let parsed: unknown;
 
@@ -274,6 +301,7 @@ function parseMessage(raw: RawData): ClientMessage | null {
     isFiniteNumber(parsed.aimWorldX) &&
     isFiniteNumber(parsed.aimWorldY) &&
     isBoolean(parsed.reviveHeld) &&
+    isBoolean(parsed.dashHeld) &&
     (parsed.seq === undefined || isFiniteNumber(parsed.seq))
   ) {
     return parsed as ClientMessage;
@@ -322,10 +350,19 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
     ?? parsePositiveInteger(process.env.LAN_MAX_ROOM_CREATIONS_PER_WINDOW, DEFAULT_MAX_ROOM_CREATIONS_PER_WINDOW);
   const roomCreationWindowMs = options.roomCreationWindowMs
     ?? parsePositiveInteger(process.env.LAN_ROOM_CREATION_WINDOW_MS, DEFAULT_ROOM_CREATION_WINDOW_MS);
+  const maxPendingConnectionsPerIp = options.maxPendingConnectionsPerIp
+    ?? parsePositiveInteger(process.env.LAN_MAX_PENDING_PER_IP, DEFAULT_MAX_PENDING_PER_IP);
+
+  if (process.env.ALLOWED_ORIGINS && allowedOrigins.length === 0) {
+    console.warn(
+      '[lan-server] ALLOWED_ORIGINS is set but produced an empty allowlist; only local-network origins will be admitted.'
+    );
+  }
 
   const rooms = new Map<string, Room>();
   const clients = new Map<WebSocket, ClientConnection>();
   const roomCreationWindows = new Map<string, { startedAt: number; count: number }>();
+  const pendingByIp = new Map<string, number>();
   let lastTick = Date.now();
   let snapshotAccumulator = 0;
 
@@ -635,7 +672,10 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
     try {
       claimed = claimPlayer(room, message.name ?? '', effectiveReconnect);
     } catch (error) {
-      send(socket, { type: 'error', message: error instanceof Error ? error.message : 'Unable to join room' });
+      // Log details server-side; send the client a generic message so internal
+      // error text / stack details are never exposed to untrusted connections.
+      console.error('[lan-server] claimPlayer failed:', error);
+      send(socket, { type: 'error', message: 'Unable to join room.' });
       socket.close(1013, 'room full');
       return;
     }
@@ -658,9 +698,13 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       commandWindowStartedAt: now,
       commandCount: 0,
       controlWindowStartedAt: now,
-      controlCount: 0
+      controlCount: 0,
+      isAlive: true
     };
     clients.set(socket, client);
+    socket.on('pong', () => {
+      client.isAlive = true;
+    });
 
     send(socket, {
       type: 'welcome',
@@ -727,11 +771,42 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
   });
 
   wss.on('connection', (socket, request) => {
-    const helloTimer = setTimeout(() => socket.close(1008, 'hello required'), 5000);
-    const remoteAddress = request.socket.remoteAddress ?? 'unknown';
+    const remoteAddress = getClientIp(request);
 
-    socket.on('message', (raw) => handleHello(socket, raw, helloTimer, remoteAddress));
+    // Cap simultaneous unauthenticated (pre-hello) connections per IP. The
+    // global maxClients limit only counts fully joined clients, so without this
+    // an attacker could exhaust file descriptors/memory by opening many sockets
+    // and never sending a hello (Slowloris-style).
+    const pending = pendingByIp.get(remoteAddress) ?? 0;
+    if (pending >= maxPendingConnectionsPerIp) {
+      socket.close(1013, 'too many pending connections');
+      return;
+    }
+    pendingByIp.set(remoteAddress, pending + 1);
+    let pendingReleased = false;
+    const releasePending = () => {
+      if (pendingReleased) {
+        return;
+      }
+      pendingReleased = true;
+      const next = (pendingByIp.get(remoteAddress) ?? 1) - 1;
+      if (next <= 0) {
+        pendingByIp.delete(remoteAddress);
+      } else {
+        pendingByIp.set(remoteAddress, next);
+      }
+    };
+
+    const helloTimer = setTimeout(() => socket.close(1008, 'hello required'), 5000);
+
+    // The pre-hello phase ends as soon as the first message arrives (handleHello
+    // either establishes a client or closes the socket) or the socket closes.
+    socket.on('message', (raw) => {
+      releasePending();
+      handleHello(socket, raw, helloTimer, remoteAddress);
+    });
     socket.on('close', () => {
+      releasePending();
       clearTimeout(helloTimer);
       const client = clients.get(socket);
       if (!client) {
@@ -781,9 +856,17 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
   const cleanupTimer = setInterval(cleanupDisconnectedPlayers, Math.min(disconnectGraceMs, 10_000));
   const heartbeatTimer = setInterval(() => {
     for (const client of clients.values()) {
-      if (client.socket.readyState === client.socket.OPEN) {
-        client.socket.ping();
+      if (client.socket.readyState !== client.socket.OPEN) {
+        continue;
       }
+      // No pong since the last ping -> the connection is a zombie; drop it.
+      // Closes dead/slowloris connections within ~2 heartbeat cycles.
+      if (!client.isAlive) {
+        client.socket.terminate();
+        continue;
+      }
+      client.isAlive = false;
+      client.socket.ping();
     }
   }, heartbeatMs);
 
