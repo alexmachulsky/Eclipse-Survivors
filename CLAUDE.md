@@ -54,13 +54,13 @@ All mutable game state lives inside `GameEngine` (`src/game/GameEngine.ts`). Rea
 
 - `GameCanvas` (`src/components/GameCanvas.tsx`) owns the `requestAnimationFrame` loop. Each frame it calls `engine.update(dt)` then `engine.render(ctx)` on the HTML5 canvas.
 - `App` (`src/App.tsx`) holds `engineRef` and subscribes to `GameSnapshot` — a plain object extracted by `engine.getSnapshot()`. Snapshots are pushed into React state at ≤20 Hz from the animation loop (more frequently via direct calls on user actions like pause).
-- React never touches `GameState` directly; it only reads `GameSnapshot` and calls the engine's command methods (`startRun`, `pause`, `resume`, `selectUpgrade`, `setMovement`, `setMouse`, `setViewSize`, `setPerformanceMode`).
+- React never touches `GameState` directly; it only reads `GameSnapshot` and calls the engine's command methods — core: `startRun`, `pause`/`resume`/`togglePause`, `selectUpgrade`, `setMovement`, `setMouse`, `setViewSize`, `setPerformanceMode`, `dash`; solo-only agency: `rerollChoices`, `banishChoice`, `lockChoice`; plus `debugLevelUp`/`debugOpenChest`/`debugSpawn*` in debug mode.
 
 ### Game loop
 
-`update(dt)` runs all simulation logic in a fixed order: player movement → enemy spawning → weapon firing → enemy AI → projectile movement → combat resolution → gem/pickup collection → effect decay → end-state check.
+`update(dt)` runs all simulation logic in a fixed order: time tracking and screen-shake decay → player movement and dash → run-director events and objectives → enemy spawning, health pickups, weapon firing, and enemy AI (all gated while a cinematic plays) → projectile movement → combat resolution → gem/pickup/reward-chest collection → effect decay → end-state check.
 
-`render(ctx)` draws the world by translating the canvas to `(shakeOffset - viewport.origin)` so all draw calls use world coordinates directly.
+`render(ctx)` draws the world by translating the canvas to `(shakeOffset.x - viewport.x, shakeOffset.y - viewport.y)` so all draw calls use world coordinates directly.
 
 ### State mutation rules
 
@@ -82,9 +82,9 @@ All mutable game state lives inside `GameEngine` (`src/game/GameEngine.ts`). Rea
 
 Two mechanisms keep the frame rate at 60 fps:
 
-1. **Performance mode** — `GameCanvas` samples FPS every 250 ms. If it falls below 58 fps for two consecutive windows it calls `engine.setPerformanceMode(true)`, which disables all glow effects and replaces per-type enemy art with a simple geometric fallback (`drawEnemyLite`). Performance mode turns off again after 16 consecutive 60-fps windows.
+1. **Performance mode** — `GameCanvas` samples FPS every 250 ms. If it falls below 58 fps for two consecutive windows it calls `engine.setPerformanceMode(true)`, which disables all glow effects and swaps each enemy's detailed sprite for a pre-rendered lite variant (`spriteGroup.lite` in `renderAssets.ts`; the standalone `drawEnemyLite` function is unused dead code). Performance mode turns off again after 16 consecutive windows at ≥59.5 fps.
 
-2. **Dynamic glow scale** — Even outside performance mode, `glowScale` is set to 0 (≥90 entities), 0.35 (55–89 entities), or 1.0 (<55 entities) each frame. All `setGlow` calls multiply `shadowBlur` by `glowScale`. Wrap every `ctx.shadowBlur` assignment with `glowScale`; skip when `glowScale === 0` or `performanceMode` is on.
+2. **Dynamic glow scale** — Even outside performance mode, `glowScale` is set to 0 (≥90 entities), 0.35 (55–89 entities), or 1.0 (<55 entities) each frame. The `setGlow()` helper multiplies `shadowBlur` by `glowScale` internally and drops the shadow color when the result is 0, so most `setGlow()` calls are unconditional — use it instead of assigning `ctx.shadowBlur` directly. Per-entity hot paths (particles, damage texts) additionally guard with `if (!this.fastRender)`, where `fastRender = performanceMode || glowScale === 0`.
 
 ### HUD bars (CSS)
 
@@ -106,7 +106,7 @@ Meter bar-fill rules must use the direct-child combinator (`.health-meter > span
 
 ### Collision broadphase
 
-`SpatialGrid` (`src/game/spatialGrid.ts`) partitions enemies into 96-px cells. Before processing player projectiles each frame, enemies are re-inserted into the grid; each projectile only checks candidates from overlapping cells. The grid must be rebuilt each frame before resolving projectile collisions.
+`SpatialGrid` (`src/game/spatialGrid.ts`) partitions enemies into 96-px cells. Before processing player projectiles each frame, enemies are re-inserted into the grid; each projectile only checks candidates from overlapping cells. The grid must be rebuilt each frame before resolving projectile collisions. The rebuild lives inside `resolveCombat()` → `resolvePlayerProjectiles()`, which runs *after* all movement — so the grid is frame-local. Don't reuse `enemyGrid` for queries earlier in `update()`; it would be stale from the previous frame (build a separate grid or brute-force those).
 
 ### Weapons
 
@@ -118,7 +118,7 @@ Weapons, passives, and evolutions live in data-driven registries under `src/game
 
 ### Dash
 
-`src/game/dash.ts` is a pure-function module that owns dash math: `tickDashCooldown`, `startDash`, `tickDashMotion`, `resolveDashHits`, `tryQueueDash`, `consumeDashQueue`. It has no engine import — the engine and `GameSim` both call these functions and write results back to `Player.dash`. Dash multipliers (`dashDamageMult`, `dashRechargeMult`, `dashChargeBonus`) are mutated by passives in `passives.registry.ts` and read back by `dash.ts` through the player. To add a new dash-affecting passive, add an entry to the passive registry that mutates one of those three multiplier fields — no engine changes needed. Input: `Space` in solo (handled in `GameCanvas.tsx` via `engine.dash()`), and the edge-triggered `dashHeld` field on `PlayerCommand` in LAN (handled in `GameSim.updatePlayers`). Server is authoritative — `startDash` returns null when guards fail (no charges, already dashing, zero direction). Render-only state (`dashTrail`) lives on the engine class, not `GameState`.
+`src/game/dash.ts` is a pure-function module that owns dash math: `tickDashCooldown`, `startDash`, `tickDashMotion`, `resolveDashHits`, `tryQueueDash`, `consumeDashQueue`. It has no engine import — the engine and `GameSim` both call these functions and write results back to `Player.dash`. Dash multipliers (`dashDamageMult`, `dashRechargeMult`, `dashChargeBonus`) are mutated by passives in `passives.registry.ts` and read back by `dash.ts` through the player. To add a new dash-affecting passive, add an entry to the passive registry that mutates one of those three multiplier fields — no engine changes needed. Input: `Space` in solo (handled in `GameCanvas.tsx` via `engine.dash()`), and the edge-triggered `dashHeld` field on `PlayerCommand` in LAN (handled in `GameSim.updatePlayers`). Server is authoritative — `startDash` returns null when guards fail (no charges, already dashing, zero direction). Render-only state (`dashTrail`) lives on the engine class, not `GameState`. Dash input is buffered: `tryQueueDash` arms a one-shot `queued` flag only within the last `DASH_CONFIG.queueWindow` (0.08 s) of an active dash, and `consumeDashQueue` fires it the frame that dash ends. Preserve the `tickDashCooldown` → `tickDashMotion` → `consumeDashQueue` ordering — reordering it or changing the `dt` handling there breaks rapid-dash feel.
 
 ### Upgrade agency (reroll / banish / lock)
 
@@ -134,7 +134,7 @@ Solo runs only — LAN is intentionally unchanged this slice. `GameState.agency`
 
 `src/game/GameSim.ts` is the pure-simulation class (no canvas/DOM) that runs on both the authoritative WebSocket server (`server/index.ts`, using `ws`) and is imported by `GameEngine`. `LanGameCanvas` (wired in `App.tsx`) renders server snapshots on the client. Do not introduce canvas/DOM imports into `GameSim.ts` — it must stay pure TypeScript with no browser globals.
 
-`src/game/simulation.ts` holds the spawn-pack, objective-curse, and on-kill passive (Bloodlust, Adrenal Surge) math as pure functions that **both** `GameEngine` and `GameSim` call — keeping the solo and authoritative sims in lockstep is what prevents multiplayer desync. Like `GameSim.ts`, it must stay pure (no canvas/DOM/module-level mutable state) and route all randomness through the caller-supplied `rng`.
+`src/game/simulation.ts` holds the spawn-pack, objective-curse, and on-kill passive (Bloodlust, Adrenal Surge) math as pure functions that **both** `GameEngine` and `GameSim` call — keeping the solo and authoritative sims in lockstep is what prevents multiplayer desync. Like `GameSim.ts`, it must stay pure (no canvas/DOM/module-level mutable state) and route all randomness through the caller-supplied `rng`. Mind the deliberate mutation asymmetry in that module: `applyCurseToEnemy` returns a **new** enemy (used for fresh spawns), while `applyCurseToExistingEnemies` / `relieveCurseFromExistingEnemies` mutate the live array **in place** (applied/peeled when an objective resolves). Don't unify them — the spawn path must stay copy-on-write while the on-resolve path is an in-place sweep.
 
 ### Tests
 
