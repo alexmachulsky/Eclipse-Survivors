@@ -13,7 +13,7 @@ npm test             # run all Vitest tests once
 npm run test:watch   # run tests in watch mode
 ```
 
-> Note: `.gitignore` ignores `*.md` except `!README.md` — so `docs/`, **and `CLAUDE.md`/`AGENTS.md` themselves**, are gitignored and live on disk only (a fresh clone has neither). Agent spec/plan files won't commit without `-f`.
+> Note: `.gitignore` ignores `*.md` except `!README.md` and `!CLAUDE.md` — those two are tracked, so a fresh clone carries them. Everything else (`docs/`, **`AGENTS.md`**, agent spec/plan files) is disk-only and won't commit without `-f`.
 
 Run a single test file:
 ```bash
@@ -110,7 +110,7 @@ Meter bar-fill rules must use the direct-child combinator (`.health-meter > span
 
 ### Weapons
 
-Four weapons: `magic-bolt` (auto-aimed bolt), `orbit` (rotating blades that resolve hits directly), `area-pulse` (expanding ring), `piercing-arrow` (long-range, multi-pierce). Only `magic-bolt` is unlocked at game start; the rest are offered as level-up upgrades. Orbit hits are resolved in the engine loop without creating `Projectile` objects.
+Five weapons: `magic-bolt` (auto-aimed bolt), `orbit` (rotating blades that resolve hits directly), `area-pulse` (expanding ring), `piercing-arrow` (long-range, multi-pierce), `homing-missile` (Seeker Missile — slow muzzle speed, tracks via the projectile's `homingTurnRate` field). Only `magic-bolt` is unlocked at game start; the rest are offered as level-up upgrades. Orbit hits are resolved in the engine loop without creating `Projectile` objects.
 
 Weapons, passives, and evolutions live in data-driven registries under `src/game/content/`: `weapons.registry.ts` (each entry owns its `fire(ctx)` function), `passives.registry.ts` (each entry owns `apply(player)`), `evolutions.registry.ts` (each entry declares the weapon/passive pairing and level requirements). `WeaponId`, `PassiveId`, and `EvolutionId` are `string` aliases — the registries are the source of truth for valid ids.
 
@@ -133,6 +133,8 @@ Solo runs only — LAN is intentionally unchanged this slice. `GameState.agency`
 ### LAN multiplayer
 
 `src/game/GameSim.ts` is the pure-simulation class (no canvas/DOM) that runs on both the authoritative WebSocket server (`server/index.ts`, using `ws`) and is imported by `GameEngine`. `LanGameCanvas` (wired in `App.tsx`) renders server snapshots on the client. Do not introduce canvas/DOM imports into `GameSim.ts` — it must stay pure TypeScript with no browser globals.
+
+`src/game/simulation.ts` holds the spawn-pack, objective-curse, and on-kill passive (Bloodlust, Adrenal Surge) math as pure functions that **both** `GameEngine` and `GameSim` call — keeping the solo and authoritative sims in lockstep is what prevents multiplayer desync. Like `GameSim.ts`, it must stay pure (no canvas/DOM/module-level mutable state) and route all randomness through the caller-supplied `rng`.
 
 ### Tests
 
