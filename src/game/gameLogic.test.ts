@@ -14,6 +14,12 @@ import {
 import { createStartingPlayer, createStartingWeapons } from './state';
 import { createAreaPulse, findNearestEnemy, fireWeaponAtTarget } from './weapons';
 import { resolveProjectileEnemyHit } from './projectiles';
+import {
+  MAX_CURSE_STACKS,
+  applyCurseToEnemy,
+  applyCurseToExistingEnemies,
+  relieveCurseFromExistingEnemies,
+} from './simulation';
 import { collectRunDirectorEvents, createRunDirectorState, getActLabel, getBossPhase, updateObjectiveProgress } from './runDirector';
 import type { Enemy, ObjectiveState, PlayerRuntime, Projectile, UpgradeOption, Viewport, Weapon } from './types';
 import { GameEngine } from './GameEngine';
@@ -828,6 +834,40 @@ describe('core game logic', () => {
     expect(getBossPhase(0.9)).toBe(1);
     expect(getBossPhase(0.5)).toBe(2);
     expect(getBossPhase(0.2)).toBe(3);
+  });
+
+  it('scales spawn curse by stacks and leaves bosses immune', () => {
+    const normal: Enemy = { ...scaleEnemyStats('basic', 0), id: 'e', position: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, cooldown: 0, hitFlash: 0 };
+    const boss: Enemy = { ...scaleEnemyStats('boss', 0), rank: 'boss', id: 'b', position: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, cooldown: 0, hitFlash: 0 };
+
+    expect(applyCurseToEnemy(normal, 0)).toBe(normal); // no stacks → untouched reference
+    const cursed = applyCurseToEnemy(normal, 2);
+    expect(cursed.speed).toBeGreaterThan(normal.speed);
+    expect(cursed.damage).toBeGreaterThan(normal.damage);
+    expect(applyCurseToEnemy(boss, 3)).toBe(boss); // bosses immune
+  });
+
+  it('relieve approximately inverts the existing-enemy curse and skips bosses', () => {
+    const enemies: Enemy[] = [
+      { ...scaleEnemyStats('basic', 0), id: 'e', position: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, cooldown: 0, hitFlash: 0 },
+      { ...scaleEnemyStats('boss', 0), rank: 'boss', id: 'b', position: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, cooldown: 0, hitFlash: 0 },
+    ];
+    const baseSpeed = enemies[0].speed;
+    const baseDamage = enemies[0].damage;
+    const bossSpeed = enemies[1].speed;
+
+    applyCurseToExistingEnemies(enemies);
+    expect(enemies[0].speed).toBeGreaterThan(baseSpeed);
+    expect(enemies[1].speed).toBe(bossSpeed); // boss untouched
+
+    relieveCurseFromExistingEnemies(enemies);
+    expect(Math.abs(enemies[0].speed - baseSpeed)).toBeLessThanOrEqual(1);
+    expect(Math.abs(enemies[0].damage - baseDamage)).toBeLessThanOrEqual(1);
+    expect(enemies[1].speed).toBe(bossSpeed); // still untouched
+  });
+
+  it('caps stacked curses at 3', () => {
+    expect(MAX_CURSE_STACKS).toBe(3);
   });
 
   it('queries spatial grid candidates that match brute-force circle bounds', () => {

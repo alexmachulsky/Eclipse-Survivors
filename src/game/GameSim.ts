@@ -1,6 +1,6 @@
 import { angleTo, circlesOverlapSq, clamp, distanceSq, vectorFromAngle } from './collisions';
 import { chooseEnemyType, getBossSpawn, spawnEnemyOutsideViewport, updateEnemies } from './enemies';
-import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, computeSpawnPack } from './simulation';
+import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, relieveCurseFromExistingEnemies as relieveCurseExistingEnemies, computeSpawnPack, MAX_CURSE_STACKS } from './simulation';
 import { createDeathParticles, createXpGem, updateParticles } from './particles';
 import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { startDash, tickDashCooldown, tickDashMotion, resolveDashHits, tryQueueDash, consumeDashQueue } from './dash';
@@ -428,6 +428,10 @@ export class GameSim {
     curseExistingEnemies(this.state.enemies);
   }
 
+  private relieveCurseFromExistingEnemies(): void {
+    relieveCurseExistingEnemies(this.state.enemies);
+  }
+
   private updateObjectives(dt: number): void {
     const activePlayers = this.getActivePlayers();
     const completedIds: string[] = [];
@@ -451,12 +455,20 @@ export class GameSim {
         this.createRewardChest(objective.position, 'objective');
         this.addBurstParticles(objective.position, '#5eead4', 28);
       }
+      // Comeback: clearing an objective peels back one active curse stack.
+      if (this.state.enemyCurseStacks > 0) {
+        this.state.enemyCurseStacks -= 1;
+        this.relieveCurseFromExistingEnemies();
+      }
     }
 
     for (const id of cursedIds) {
       const objective = this.state.objectives.find((item) => item.id === id);
-      this.state.enemyCurseStacks += 1;
-      this.applyCurseToExistingEnemies();
+      // Cap the curse so failed objectives can't spiral into an unwinnable run.
+      if (this.state.enemyCurseStacks < MAX_CURSE_STACKS) {
+        this.state.enemyCurseStacks += 1;
+        this.applyCurseToExistingEnemies();
+      }
       if (objective) {
         this.addBurstParticles(objective.position, '#ff335f', 22);
       }

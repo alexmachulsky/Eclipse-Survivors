@@ -16,7 +16,7 @@ import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import { preloadRenderAssets, type RenderAssets, type SpriteAsset } from './renderAssets';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
 import { creditRunReward } from './wallet';
-import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, computeSpawnPack } from './simulation';
+import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, relieveCurseFromExistingEnemies as relieveCurseExistingEnemies, computeSpawnPack, MAX_CURSE_STACKS } from './simulation';
 import {
   collectRunDirectorEvents,
   createRiftObjective,
@@ -53,7 +53,7 @@ export interface GameSnapshot {
   killStreak: number;
   weaponDamageDealt: Record<string, number>;
   upgradeHistory: string[];
-  bossApproachingIn: number | null;  // computed: 300 - elapsed when ≤30s && !bossSpawned
+  bossApproachingIn: number | null;  // seconds until the boss spawns (RUN_LENGTH_SECONDS), only within the final 30s
   healthRatio: number;               // health/maxHealth convenience field for HUD
   agency: { rerolls: number; banishes: number; locks: number; maxRerolls: number; maxLocks: number };
   bannedUpgradeIds: string[];
@@ -522,8 +522,8 @@ export class GameEngine {
       killStreak: this.state.killStreak,
       weaponDamageDealt: this.state.weaponDamageDealt,
       upgradeHistory: this.state.upgradeHistory,
-      bossApproachingIn: !this.state.bossSpawned && (300 - this.state.elapsed) <= 30
-        ? Math.ceil(300 - this.state.elapsed)
+      bossApproachingIn: !this.state.bossSpawned && (RUN_LENGTH_SECONDS - this.state.elapsed) <= 30
+        ? Math.ceil(RUN_LENGTH_SECONDS - this.state.elapsed)
         : null,
       healthRatio: this.state.player.health / this.state.player.maxHealth,
       agency: { ...this.state.agency },
@@ -612,6 +612,10 @@ export class GameEngine {
     curseExistingEnemies(this.state.enemies);
   }
 
+  private relieveCurseFromExistingEnemies(): void {
+    relieveCurseExistingEnemies(this.state.enemies);
+  }
+
   private updateObjectives(dt: number): void {
     const result = updateObjectiveProgress(this.state.objectives, this.state.player.position, dt);
 
@@ -621,12 +625,20 @@ export class GameEngine {
         this.createRewardChest(objective.position, 'objective');
         this.addBurstParticles(objective.position, '#5eead4', 28);
       }
+      // Comeback: clearing an objective peels back one active curse stack.
+      if (this.state.enemyCurseStacks > 0) {
+        this.state.enemyCurseStacks -= 1;
+        this.relieveCurseFromExistingEnemies();
+      }
     }
 
     for (const id of result.cursedIds) {
       const objective = this.state.objectives.find((item) => item.id === id);
-      this.state.enemyCurseStacks += 1;
-      this.applyCurseToExistingEnemies();
+      // Cap the curse so failed objectives can't spiral into an unwinnable run.
+      if (this.state.enemyCurseStacks < MAX_CURSE_STACKS) {
+        this.state.enemyCurseStacks += 1;
+        this.applyCurseToExistingEnemies();
+      }
       if (objective) {
         this.addBurstParticles(objective.position, '#ff335f', 22);
       }

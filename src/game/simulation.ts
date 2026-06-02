@@ -10,6 +10,11 @@ import { chooseEnemyType, spawnEnemyOutsideViewport } from './enemies';
 
 export const MIN_SPAWN_INTERVAL = 0.26;
 const ENEMY_CURSE_SCALE_PER_STACK = 0.08;
+// Hard ceiling on stacked objective curses. Without it, failing every
+// objective compounds into an unwinnable Act 3; with the cap plus the
+// completion-driven relief below, a botched objective stings but is
+// recoverable by capturing the next one.
+export const MAX_CURSE_STACKS = 3;
 
 // Scale a freshly-spawned enemy's stats by the active curse stacks. Bosses are
 // immune. Returns a new enemy (does not mutate the input).
@@ -36,6 +41,22 @@ export function applyCurseToExistingEnemies(enemies: Enemy[]): void {
 
     enemy.speed = Math.round(enemy.speed * 1.08);
     enemy.damage = Math.round(enemy.damage * 1.08);
+  }
+}
+
+// Inverse of applyCurseToExistingEnemies: peel one curse stack off every
+// already-spawned non-boss enemy in place. Called when an objective is
+// completed while curses are active (the comeback path). Rounding makes this
+// an approximate — not exact — inverse, which is fine for game feel and stays
+// deterministic across both sims (same shared maths, same inputs).
+export function relieveCurseFromExistingEnemies(enemies: Enemy[]): void {
+  for (const enemy of enemies) {
+    if (enemy.rank === 'boss') {
+      continue;
+    }
+
+    enemy.speed = Math.round(enemy.speed / 1.08);
+    enemy.damage = Math.round(enemy.damage / 1.08);
   }
 }
 

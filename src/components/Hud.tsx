@@ -176,7 +176,7 @@ export const Hud = memo(function Hud({ snapshot, onPause }: HudProps) {
             </span>
           )}
           {snapshot.enemyCurseStacks > 0 && (
-            <Tooltip content={<><strong>Curse Stacks</strong>Enemies gain +15% speed and +10% damage per stack. Stacks up when rifts are ignored.</>}>
+            <Tooltip content={<><strong>Curse Stacks</strong>Enemies gain +8% speed and damage per stack (max 3), set when a rift is ignored. Capture a rift to remove a stack.</>}>
               <span
                 className="curse-alert"
                 aria-label={`Curse stacks: ${snapshot.enemyCurseStacks}`}
