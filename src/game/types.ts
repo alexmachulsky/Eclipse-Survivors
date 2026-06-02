@@ -60,6 +60,7 @@ export interface Player {
   dashDamageMult: number;
   dashRechargeMult: number;
   dashChargeBonus: number;
+  lifestealOnKill: number;  // HP restored per heavy/elite/boss kill (Bloodlust passive; 0 = none)
 }
 
 export type EnemyType = 'basic' | 'fast' | 'tank' | 'ranged' | 'boss';
@@ -294,6 +295,8 @@ export interface PlayerRuntime {
   pendingChestChoices: UpgradeOption[];
   stats: GameStats;
   reviveProgress: number;
+  killStreak: number;        // consecutive recent kills (drives Adrenal Surge in LAN)
+  killStreakExpiry: number;  // elapsed time at which the streak resets
 }
 
 export interface PlayerCommand {

@@ -16,7 +16,7 @@ import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import { preloadRenderAssets, type RenderAssets, type SpriteAsset } from './renderAssets';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
 import { creditRunReward } from './wallet';
-import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, relieveCurseFromExistingEnemies as relieveCurseExistingEnemies, computeSpawnPack, MAX_CURSE_STACKS } from './simulation';
+import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, relieveCurseFromExistingEnemies as relieveCurseExistingEnemies, computeSpawnPack, MAX_CURSE_STACKS, adrenalineRateFactor, isHeavyKill } from './simulation';
 import {
   collectRunDirectorEvents,
   createRiftObjective,
@@ -687,8 +687,9 @@ export class GameEngine {
     const projectiles: Projectile[] = [];
 
     this.state.orbitAngle += dt * 2.8;
+    const adrenaline = adrenalineRateFactor(this.state.player.passives['adrenal-surge'] ?? 0, this.state.killStreak);
     for (const weapon of this.state.weapons) {
-      weapon.cooldown = Math.max(0, weapon.cooldown - dt * this.state.player.attackRateMultiplier);
+      weapon.cooldown = Math.max(0, weapon.cooldown - dt * this.state.player.attackRateMultiplier * adrenaline);
     }
 
     for (const weapon of this.state.weapons) {
@@ -937,6 +938,11 @@ export class GameEngine {
       }
 
       this.state.stats.kills += 1;
+
+      // Bloodlust: restore HP when slaying a tough foe (never the basic swarm).
+      if (this.state.player.lifestealOnKill > 0 && isHeavyKill(enemy)) {
+        this.state.player.health = Math.min(this.state.player.maxHealth, this.state.player.health + this.state.player.lifestealOnKill);
+      }
 
       // 2a: Kill streak tracking
       this.state.killStreak += 1;
@@ -2188,7 +2194,9 @@ export class GameEngine {
       upgradeChoices: this.state.upgradeChoices,
       pendingChestChoices: this.state.pendingChestChoices,
       stats: this.state.stats,
-      reviveProgress: 0
+      reviveProgress: 0,
+      killStreak: this.state.killStreak,
+      killStreakExpiry: this.state.killStreakExpiry
     }];
   }
 

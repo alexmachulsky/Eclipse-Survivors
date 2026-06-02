@@ -16,6 +16,26 @@ const ENEMY_CURSE_SCALE_PER_STACK = 0.08;
 // recoverable by capturing the next one.
 export const MAX_CURSE_STACKS = 3;
 
+// Adrenal Surge passive tuning. Attack-rate ramps with the current kill streak,
+// scaled by passive level, hard-capped so it stays a boost rather than a
+// run-away. Pure + shared so the solo engine and the authoritative sim agree.
+const ADRENALINE_PER_KILL = 0.03;
+const ADRENALINE_MAX_BONUS = 0.45;
+
+export function adrenalineRateFactor(passiveLevel: number, killStreak: number): number {
+  if (passiveLevel <= 0 || killStreak <= 0) {
+    return 1;
+  }
+  return 1 + Math.min(ADRENALINE_MAX_BONUS, killStreak * ADRENALINE_PER_KILL * passiveLevel);
+}
+
+// Bloodlust only pays out on tougher foes (heavies, ranged, elites, the boss),
+// never the basic/fast swarm — otherwise on-kill healing trivialises survival
+// in a horde. Shared so both sims gate the heal identically.
+export function isHeavyKill(enemy: Enemy): boolean {
+  return enemy.type === 'tank' || enemy.type === 'ranged' || enemy.rank === 'elite' || enemy.rank === 'boss';
+}
+
 // Scale a freshly-spawned enemy's stats by the active curse stacks. Bosses are
 // immune. Returns a new enemy (does not mutate the input).
 export function applyCurseToEnemy(enemy: Enemy, curseStacks: number): Enemy {

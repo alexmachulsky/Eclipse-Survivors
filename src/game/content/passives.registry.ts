@@ -62,4 +62,21 @@ export const PASSIVES: Record<string, PassiveDef> = {
       return { ...next, dash: { ...next.dash, charges: Math.min(next.dash.charges + 1, next.dash.maxCharges + next.dashChargeBonus) } };
     },
   },
+  'bloodlust': {
+    id: 'bloodlust',
+    name: 'Bloodlust',
+    description: '+2 HP per heavy or elite kill, per level',
+    maxLevel: 3,
+    apply: (p) => ({ ...p, lifestealOnKill: p.lifestealOnKill + 2 }),
+  },
+  'adrenal-surge': {
+    id: 'adrenal-surge',
+    name: 'Adrenal Surge',
+    description: 'Attack rate ramps with your kill streak',
+    maxLevel: 3,
+    // Conditional passive: the effect is computed at fire time from the live
+    // kill streak (see adrenalineRateFactor in simulation.ts), so apply only
+    // needs to register the level in player.passives — no static stat to mutate.
+    apply: (p) => p,
+  },
 };

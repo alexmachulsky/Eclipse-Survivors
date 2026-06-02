@@ -1,6 +1,6 @@
 import { angleTo, circlesOverlapSq, clamp, distanceSq, vectorFromAngle } from './collisions';
 import { chooseEnemyType, getBossSpawn, spawnEnemyOutsideViewport, updateEnemies } from './enemies';
-import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, relieveCurseFromExistingEnemies as relieveCurseExistingEnemies, computeSpawnPack, MAX_CURSE_STACKS } from './simulation';
+import { applyCurseToEnemy as curseEnemy, applyCurseToExistingEnemies as curseExistingEnemies, relieveCurseFromExistingEnemies as relieveCurseExistingEnemies, computeSpawnPack, MAX_CURSE_STACKS, adrenalineRateFactor, isHeavyKill } from './simulation';
 import { createDeathParticles, createXpGem, updateParticles } from './particles';
 import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { startDash, tickDashCooldown, tickDashMotion, resolveDashHits, tryQueueDash, consumeDashQueue } from './dash';
@@ -104,7 +104,9 @@ function resetRuntime(runtime: PlayerRuntime, index: number): PlayerRuntime {
     upgradeChoices: [],
     pendingChestChoices: [],
     stats: createStats(),
-    reviveProgress: 0
+    reviveProgress: 0,
+    killStreak: 0,
+    killStreakExpiry: 0
   };
 }
 
@@ -152,7 +154,9 @@ export class GameSim {
       upgradeChoices: [],
       pendingChestChoices: [],
       stats: createStats(),
-      reviveProgress: 0
+      reviveProgress: 0,
+      killStreak: 0,
+      killStreakExpiry: 0
     };
     const reset = resetRuntime(runtime, index);
 
@@ -342,6 +346,11 @@ export class GameSim {
         continue;
       }
 
+      // Expire the kill streak after a lull (mirrors the solo engine's 3s window).
+      if (this.state.elapsed > runtime.killStreakExpiry && runtime.killStreak > 0) {
+        runtime.killStreak = 0;
+      }
+
       const command = this.commands.get(runtime.id);
       runtime.player = updatePlayerMovement(runtime.player, toMovementInput(command), dt, this.state.arena);
       runtime.player = setPlayerFacing(runtime.player, {
@@ -524,8 +533,9 @@ export class GameSim {
     this.state.orbitAngle += dt * 2.8;
 
     for (const runtime of this.getActivePlayers()) {
+      const adrenaline = adrenalineRateFactor(runtime.player.passives['adrenal-surge'] ?? 0, runtime.killStreak);
       for (const weapon of runtime.weapons) {
-        weapon.cooldown = Math.max(0, weapon.cooldown - dt * runtime.player.attackRateMultiplier);
+        weapon.cooldown = Math.max(0, weapon.cooldown - dt * runtime.player.attackRateMultiplier * adrenaline);
       }
 
       for (const weapon of runtime.weapons) {
@@ -815,6 +825,12 @@ export class GameSim {
 
       for (const runtime of this.getConnectedPlayers()) {
         runtime.stats.kills += 1;
+        // Co-op shares kills, so streaks and Bloodlust are shared momentum.
+        runtime.killStreak += 1;
+        runtime.killStreakExpiry = this.state.elapsed + 3;
+        if (runtime.player.lifestealOnKill > 0 && isHeavyKill(enemy)) {
+          runtime.player.health = Math.min(runtime.player.maxHealth, runtime.player.health + runtime.player.lifestealOnKill);
+        }
       }
       if (this.state.gems.length < MAX_GEMS) {
         this.state.gems.push(createXpGem(enemy));

@@ -19,6 +19,7 @@ import {
   applyCurseToEnemy,
   applyCurseToExistingEnemies,
   relieveCurseFromExistingEnemies,
+  adrenalineRateFactor,
 } from './simulation';
 import { collectRunDirectorEvents, createRunDirectorState, getActLabel, getBossPhase, updateObjectiveProgress } from './runDirector';
 import type { Enemy, ObjectiveState, PlayerRuntime, Projectile, UpgradeOption, Viewport, Weapon } from './types';
@@ -364,7 +365,9 @@ describe('core game logic', () => {
         upgradesCollected: 0,
         damageDealt: 0
       },
-      reviveProgress: 0
+      reviveProgress: 0,
+      killStreak: 0,
+      killStreakExpiry: 0
     };
     const recording = createRecordingCanvasContext();
 
@@ -622,21 +625,28 @@ describe('core game logic', () => {
     expect(upgraded.player.attackRateMultiplier).toBeCloseTo(1.08);
   });
 
-  it('requires level 6 weapon and level 2 matching passive before offering evolutions', () => {
+  it('requires level 5 weapon and level 1 matching passive before offering evolutions', () => {
     const player = {
       ...createStartingPlayer({ x: 0, y: 0 }),
-      passives: { 'cooldown-sigil': 1 }
+      passives: {}
     };
     const weapons = createStartingWeapons().map((weapon) =>
-      weapon.id === 'magic-bolt' ? { ...weapon, level: 6, unlocked: true } : weapon
+      weapon.id === 'magic-bolt' ? { ...weapon, level: 5, unlocked: true } : weapon
     );
 
+    // Weapon meets the level gate, but the matching passive is still at 0.
     expect(getEligibleEvolutions(player, weapons)).toHaveLength(0);
 
-    const eligiblePlayer = { ...player, passives: { 'cooldown-sigil': 2 } };
+    const eligiblePlayer = { ...player, passives: { 'cooldown-sigil': 1 } };
     const eligible = getEligibleEvolutions(eligiblePlayer, weapons);
 
     expect(eligible.map((evolution) => evolution.id)).toEqual(['starfall-lance']);
+
+    // And the weapon must still reach the (lowered) level gate.
+    const underleveled = createStartingWeapons().map((weapon) =>
+      weapon.id === 'magic-bolt' ? { ...weapon, level: 4, unlocked: true } : weapon
+    );
+    expect(getEligibleEvolutions(eligiblePlayer, underleveled)).toHaveLength(0);
   });
 
   it('prioritizes eligible evolutions in chest rewards and prevents duplicates after evolving', () => {
@@ -1445,10 +1455,10 @@ describe('evolutions registry', () => {
     expect(EVOLUTIONS_REGISTRY['comet-volley'].weaponId).toBe('piercing-arrow');
   });
 
-  it('all entries default to weaponLevelRequired=6 and passiveLevelRequired=2', () => {
+  it('gates every entry at weaponLevelRequired=5 and passiveLevelRequired=1', () => {
     for (const def of Object.values(EVOLUTIONS_REGISTRY)) {
-      expect(def.weaponLevelRequired).toBe(6);
-      expect(def.passiveLevelRequired).toBe(2);
+      expect(def.weaponLevelRequired).toBe(5);
+      expect(def.passiveLevelRequired).toBe(1);
     }
   });
 });
@@ -1476,6 +1486,21 @@ describe('passives registry', () => {
     expect(PASSIVES_REGISTRY['astral-lens'].apply(p0).pickupRadius).toBe(p0.pickupRadius + 20);
     expect(PASSIVES_REGISTRY['void-core'].apply(p0).areaMultiplier).toBeCloseTo(p0.areaMultiplier * 1.1);
     expect(PASSIVES_REGISTRY['keen-fletching'].apply(p0).projectileSpeedMultiplier).toBeCloseTo(p0.projectileSpeedMultiplier * 1.12);
+  });
+
+  it('models the conditional Bloodlust and Adrenal Surge passives', () => {
+    const p0 = createStartingPlayer({ x: 0, y: 0 });
+    // Bloodlust grants +2 lifesteal-on-kill per level.
+    expect(PASSIVES_REGISTRY['bloodlust'].apply(p0).lifestealOnKill).toBe(p0.lifestealOnKill + 2);
+    // Adrenal Surge mutates no static stat — its effect is applied at fire time.
+    expect(PASSIVES_REGISTRY['adrenal-surge'].apply(p0)).toEqual(p0);
+  });
+
+  it('ramps adrenaline attack-rate with the kill streak and caps the bonus', () => {
+    expect(adrenalineRateFactor(0, 50)).toBe(1);            // passive not taken
+    expect(adrenalineRateFactor(1, 0)).toBe(1);             // no active streak
+    expect(adrenalineRateFactor(1, 3)).toBeCloseTo(1.09);   // 3 × 0.03 × 1
+    expect(adrenalineRateFactor(3, 100)).toBeCloseTo(1.45); // hard cap at +45%
   });
 });
 

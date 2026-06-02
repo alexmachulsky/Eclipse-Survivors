@@ -62,6 +62,18 @@ export const PASSIVES: PassiveDefinition[] = [
     name: 'Eclipse Momentum',
     description: '+1 dash charge',
     maxLevel: 1
+  },
+  {
+    id: 'bloodlust',
+    name: 'Bloodlust',
+    description: '+2 HP per heavy or elite kill, per level',
+    maxLevel: 3
+  },
+  {
+    id: 'adrenal-surge',
+    name: 'Adrenal Surge',
+    description: 'Attack rate ramps with your kill streak (up to +45%)',
+    maxLevel: 3
   }
 ];
 

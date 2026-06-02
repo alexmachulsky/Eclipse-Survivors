@@ -15,8 +15,8 @@ export const EVOLUTIONS: Record<string, EvolutionDef> = {
     description: 'Magic Bolt pierces harder and blooms into sparks on hit',
     weaponId: 'magic-bolt',
     passiveId: 'cooldown-sigil',
-    weaponLevelRequired: 6,
-    passiveLevelRequired: 2,
+    weaponLevelRequired: 5,
+    passiveLevelRequired: 1,
   },
   'gravitic-halo': {
     id: 'gravitic-halo',
@@ -24,8 +24,8 @@ export const EVOLUTIONS: Record<string, EvolutionDef> = {
     description: 'Astral Orbit grows wider, strikes faster, and slows enemies',
     weaponId: 'orbit',
     passiveId: 'astral-lens',
-    weaponLevelRequired: 6,
-    passiveLevelRequired: 2,
+    weaponLevelRequired: 5,
+    passiveLevelRequired: 1,
   },
   'supernova-bloom': {
     id: 'supernova-bloom',
@@ -33,8 +33,8 @@ export const EVOLUTIONS: Record<string, EvolutionDef> = {
     description: 'Area Pulse leaves a lingering damaging ring',
     weaponId: 'area-pulse',
     passiveId: 'void-core',
-    weaponLevelRequired: 6,
-    passiveLevelRequired: 2,
+    weaponLevelRequired: 5,
+    passiveLevelRequired: 1,
   },
   'comet-volley': {
     id: 'comet-volley',
@@ -42,7 +42,7 @@ export const EVOLUTIONS: Record<string, EvolutionDef> = {
     description: 'Piercing Arrow becomes a high-speed three-arrow fan',
     weaponId: 'piercing-arrow',
     passiveId: 'keen-fletching',
-    weaponLevelRequired: 6,
-    passiveLevelRequired: 2,
+    weaponLevelRequired: 5,
+    passiveLevelRequired: 1,
   },
 };
