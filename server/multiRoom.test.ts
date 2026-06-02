@@ -280,6 +280,80 @@ describe('multi-room LAN server', () => {
     await waitForClose(first);
   });
 
+  it('restores the same player when reconnecting with the token within the grace window', async () => {
+    // Large grace so the disconnected session is still alive when we reconnect
+    // (the internal cleanup timer fires no sooner than min(grace, 10s)).
+    const { url } = await listenWithOptions({ disconnectGraceMs: 5_000 });
+    const host = await openSocket(url);
+    const welcome1 = nextMessage<Welcome>(host, 'welcome');
+    host.send(JSON.stringify({ type: 'hello', name: 'Host', action: 'create', roomName: 'A' }));
+    const { playerId, reconnectToken, roomCode } = await welcome1;
+
+    host.close();
+    await waitForClose(host);
+    await new Promise((resolve) => setTimeout(resolve, 20)); // let the server mark the session disconnected
+
+    const back = await openSocket(url);
+    const welcome2 = nextMessage<Welcome>(back, 'welcome');
+    const snapshot = nextMessage<SnapshotMessage>(back, 'snapshot');
+    back.send(JSON.stringify({ type: 'hello', name: 'Host', reconnectToken }));
+    const reclaimed = await welcome2;
+    const snap = await snapshot;
+
+    expect(reclaimed.playerId).toBe(playerId); // same identity, not a fresh player
+    expect(reclaimed.roomCode).toBe(roomCode);
+    expect(snap.state.players).toHaveLength(1); // reconnect must not duplicate the player
+    expect(snap.state.players[0].status).not.toBe('disconnected');
+
+    back.close();
+    await waitForClose(back);
+  });
+
+  it('removes a player after the disconnect grace elapses and reaps the now-empty room', async () => {
+    const { handle, url } = await listenWithOptions({ disconnectGraceMs: 30, emptyRoomTtlMs: 30 });
+    const host = await openSocket(url);
+    const welcome = nextMessage<Welcome>(host, 'welcome');
+    host.send(JSON.stringify({ type: 'hello', name: 'Host', action: 'create', roomName: 'A' }));
+    await welcome;
+    expect(handle.getStats().rooms).toBe(1);
+
+    host.close();
+    await waitForClose(host);
+
+    // After grace + TTL elapse, cleanup drops the disconnected player and then,
+    // finding the room empty with no connected client, deletes the room too.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    handle.cleanupDisconnectedPlayers();
+    expect(handle.getStats().rooms).toBe(0);
+    expect(handle.getStats().clients).toBe(0);
+  });
+
+  it('keeps a room alive while at least one client stays connected', async () => {
+    const { handle, url } = await listenWithOptions({ disconnectGraceMs: 30, emptyRoomTtlMs: 30 });
+    const host = await openSocket(url);
+    const hostWelcome = nextMessage<Welcome>(host, 'welcome');
+    host.send(JSON.stringify({ type: 'hello', name: 'Host', action: 'create', roomName: 'A' }));
+    const { roomCode } = await hostWelcome;
+
+    const guest = await openSocket(url);
+    const guestWelcome = nextMessage<Welcome>(guest, 'welcome');
+    guest.send(JSON.stringify({ type: 'hello', name: 'Guest', action: 'join', roomCode }));
+    await guestWelcome;
+
+    // The guest leaves; the host stays connected.
+    guest.close();
+    await waitForClose(guest);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    handle.cleanupDisconnectedPlayers();
+
+    // The guest's session is reaped, but the room survives for the live host.
+    expect(handle.getStats().rooms).toBe(1);
+    expect(handle.getStats().clients).toBe(1);
+
+    host.close();
+    await waitForClose(host);
+  });
+
   it('prunes expired room-creation windows so the map does not grow unbounded', async () => {
     const { handle, url } = await listenWithOptions({ roomCreationWindowMs: 50 });
 

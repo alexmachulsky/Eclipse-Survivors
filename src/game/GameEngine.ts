@@ -88,6 +88,7 @@ export class GameEngine {
   private chestSequence = 0;
   private objectiveSequence = 0;
   private bossSummonTimer = 9;
+  private bossEnraged = false;  // one-shot guard for the phase-3 enrage cue
   private rng: () => number;
   private cosmic: CosmicLayers | null = null;
   private renderAssets: RenderAssets | null = null;
@@ -132,6 +133,7 @@ export class GameEngine {
     this.chestSequence = 0;
     this.objectiveSequence = 0;
     this.bossSummonTimer = 9;
+    this.bossEnraged = false;
   }
 
   pause(): void {
@@ -775,6 +777,14 @@ export class GameEngine {
     if (boss) {
       const phase = getBossPhase(boss.health / boss.maxHealth);
       this.bossSummonTimer -= dt;
+
+      // Phase-3 enrage: telegraph the (already mechanical) escalation with a
+      // one-shot shake + red burst so the difficulty spike reads on screen.
+      if (phase >= 3 && !this.bossEnraged) {
+        this.bossEnraged = true;
+        this.state.screenShake = Math.max(this.state.screenShake, 24);
+        this.addBurstParticles(boss.position, '#ff335f', 40);
+      }
 
       if (phase >= 2 && this.bossSummonTimer <= 0) {
         this.bossSummonTimer = 9;
