@@ -20,7 +20,6 @@ interface ClientConnection {
   reconnectToken: string;
   roomCode: string;
   lastCommandSeq: number;
-  invalidMessages: number;
   commandWindowStartedAt: number;
   commandCount: number;
   controlWindowStartedAt: number;
@@ -535,10 +534,7 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
     perMessageDeflate: false
   });
 
-  function closeInvalid(socket: WebSocket, client?: ClientConnection): void {
-    if (client) {
-      client.invalidMessages += 1;
-    }
+  function closeInvalid(socket: WebSocket): void {
     socket.close(1003, 'invalid message');
   }
 
@@ -699,7 +695,6 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       reconnectToken: claimed.reconnectToken,
       roomCode: room.code,
       lastCommandSeq: -1,
-      invalidMessages: 0,
       commandWindowStartedAt: now,
       commandCount: 0,
       controlWindowStartedAt: now,
@@ -725,7 +720,7 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
     socket.on('message', (nextRaw) => {
       const nextMessage = parseMessage(nextRaw);
       if (!nextMessage || nextMessage.type === 'hello') {
-        closeInvalid(socket, client);
+        closeInvalid(socket);
         return;
       }
       handleReadyMessage(client, nextMessage);

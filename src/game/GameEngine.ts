@@ -110,6 +110,11 @@ export class GameEngine {
   // length throbs every frame but quantizing to integer px yields a tiny set of
   // reusable gradients; per-frame alpha is applied via globalAlpha instead.
   private exhaustGradients = new Map<string, CanvasGradient>();
+  // Dash-trail glow gradient, baked once at the origin per integer radius bucket.
+  // The per-particle world position is applied via ctx.translate at draw time
+  // (gradient coords are resolved through the live CTM), and the life-driven
+  // alpha via globalAlpha — so a handful of gradients cover the whole trail.
+  private dashTrailGradients = new Map<number, CanvasGradient>();
   private dashTrail: Array<{ x: number; y: number; t: number }> = [];
   private dashHitPulseCounter = 0;
   private static readonly DASH_TRAIL_LIFE = 0.25;
@@ -457,6 +462,7 @@ export class GameEngine {
       this.lowHpVignetteGradient = null;
       this.lowHpVignetteKey = '';
       this.exhaustGradients.clear();
+      this.dashTrailGradients.clear();
     }
     this.glowScale = this.getGlowScale();
     this.fastRender = this.performanceMode || this.glowScale === 0;
@@ -1587,7 +1593,7 @@ export class GameEngine {
         this.drawSprite(ctx, sprites.pulse, projectile.position.x, projectile.position.y, projectile.radius * 2.25);
       } else if (projectile.kind === 'arrow') {
         const angle = Math.atan2(projectile.velocity.y, projectile.velocity.x);
-        const speed = Math.hypot(projectile.velocity.x, projectile.velocity.y) || 1;
+        const speed = Math.sqrt(projectile.velocity.x * projectile.velocity.x + projectile.velocity.y * projectile.velocity.y) || 1;
 
         if (!this.fastRender) {
           ctx.globalAlpha = (projectile.alpha ?? 1) * 0.32;
@@ -1634,7 +1640,7 @@ export class GameEngine {
 
       let modelRotation = 0;
       if (enemy.type === 'fast') {
-        const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+        const speed = Math.sqrt(enemy.velocity.x * enemy.velocity.x + enemy.velocity.y * enemy.velocity.y);
         modelRotation = speed > 1
           ? Math.atan2(enemy.velocity.y, enemy.velocity.x)
           : Math.atan2(this.state.player.position.y - enemy.position.y, this.state.player.position.x - enemy.position.x);
@@ -1697,7 +1703,7 @@ export class GameEngine {
 
     const px = this.state.player.position.x - enemy.position.x;
     const py = this.state.player.position.y - enemy.position.y;
-    const plen = Math.hypot(px, py) || 1;
+    const plen = Math.sqrt(px * px + py * py) || 1;
     const coreR = enemy.radius * (0.35 + charge * 0.45);
 
     ctx.save();
@@ -1806,7 +1812,7 @@ export class GameEngine {
     // Eyes oriented toward player
     const dx = px - enemy.position.x;
     const dy = py - enemy.position.y;
-    const len = Math.hypot(dx, dy) || 1;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
     const aimX = dx / len;
     const aimY = dy / len;
     const perpX = -aimY;
@@ -1838,7 +1844,7 @@ export class GameEngine {
     const r = enemy.radius;
     const t = this.state.elapsed;
     const idHash = enemy.id.charCodeAt(enemy.id.length - 1);
-    const speed = Math.hypot(enemy.velocity.x, enemy.velocity.y);
+    const speed = Math.sqrt(enemy.velocity.x * enemy.velocity.x + enemy.velocity.y * enemy.velocity.y);
     this.applyHitSquash(ctx, enemy.hitFlash);
     const angle = speed > 1
       ? Math.atan2(enemy.velocity.y, enemy.velocity.x)
@@ -1970,7 +1976,7 @@ export class GameEngine {
     if (c > 0) {
       const px = this.state.player.position.x - enemy.position.x;
       const py = this.state.player.position.y - enemy.position.y;
-      const plen = Math.hypot(px, py) || 1;
+      const plen = Math.sqrt(px * px + py * py) || 1;
       ctx.save();
       ctx.globalAlpha = c * 0.67;
       ctx.strokeStyle = '#fff3b0';
@@ -2036,7 +2042,7 @@ export class GameEngine {
     // Tracking eyes
     const dx = px - enemy.position.x;
     const dy = py - enemy.position.y;
-    const aimLen = Math.hypot(dx, dy) || 1;
+    const aimLen = Math.sqrt(dx * dx + dy * dy) || 1;
     const aimX = dx / aimLen;
     const aimY = dy / aimLen;
 
@@ -2356,25 +2362,41 @@ export class GameEngine {
     ctx.restore();
   }
 
+  // Gradient baked at the origin with baseline (max) stop alphas; the per-particle
+  // life alpha is reapplied via globalAlpha (all stop alphas scale linearly), and
+  // the world position via translate. Keyed by integer radius so the cache stays
+  // tiny (~12 entries) across the whole engine lifetime.
+  private getDashTrailGradient(ctx: CanvasRenderingContext2D, radiusKey: number): CanvasGradient {
+    let grad = this.dashTrailGradients.get(radiusKey);
+    if (!grad) {
+      grad = ctx.createRadialGradient(0, 0, 0, 0, 0, radiusKey);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      grad.addColorStop(0.5, 'rgba(168, 243, 255, 0.6)');
+      grad.addColorStop(1, 'rgba(212, 84, 255, 0)');
+      this.dashTrailGradients.set(radiusKey, grad);
+    }
+    return grad;
+  }
+
   private drawDashTrail(ctx: CanvasRenderingContext2D): void {
     if (this.fastRender || this.dashTrail.length === 0) return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = '#a8f3ff';
+    ctx.shadowBlur = 16 * this.glowScale;
     for (const s of this.dashTrail) {
       const lifeRatio = 1 - s.t / GameEngine.DASH_TRAIL_LIFE;
       if (lifeRatio <= 0) continue;
       const radius = 12 * lifeRatio + 4;
-      const alpha = 0.7 * lifeRatio;
-      const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, radius);
-      grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-      grad.addColorStop(0.5, `rgba(168, 243, 255, ${alpha * 0.6})`);
-      grad.addColorStop(1, `rgba(212, 84, 255, 0)`);
-      ctx.fillStyle = grad;
-      ctx.shadowBlur = 16 * this.glowScale;
-      ctx.shadowColor = '#a8f3ff';
+      const radiusKey = Math.max(1, Math.round(radius));
+      ctx.globalAlpha = 0.7 * lifeRatio;
+      ctx.fillStyle = this.getDashTrailGradient(ctx, radiusKey);
+      ctx.save();
+      ctx.translate(s.x, s.y);
       ctx.beginPath();
-      ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
   }
