@@ -91,6 +91,17 @@ export function createStartingWeapons(): Weapon[] {
       range: 900,
       unlocked: false,
       tags: ['projectile']
+    },
+    {
+      id: 'homing-missile',
+      name: 'Seeker Missile',
+      level: 0,
+      cooldown: 0,
+      fireRate: 1.5,
+      damage: 26,
+      range: 760,
+      unlocked: false,
+      tags: ['projectile', 'homing']
     }
   ];
 }

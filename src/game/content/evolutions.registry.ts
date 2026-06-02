@@ -45,4 +45,13 @@ export const EVOLUTIONS: Record<string, EvolutionDef> = {
     weaponLevelRequired: 5,
     passiveLevelRequired: 1,
   },
+  'swarm-battery': {
+    id: 'swarm-battery',
+    name: 'Swarm Battery',
+    description: 'Seeker Missile fires a three-missile volley that turns harder',
+    weaponId: 'homing-missile',
+    passiveId: 'void-core',
+    weaponLevelRequired: 5,
+    passiveLevelRequired: 1,
+  },
 };

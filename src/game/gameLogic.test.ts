@@ -13,7 +13,7 @@ import {
 } from './rewards';
 import { createStartingPlayer, createStartingWeapons } from './state';
 import { createAreaPulse, findNearestEnemy, fireWeaponAtTarget } from './weapons';
-import { resolveProjectileEnemyHit } from './projectiles';
+import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import {
   MAX_CURSE_STACKS,
   applyCurseToEnemy,
@@ -1501,6 +1501,47 @@ describe('passives registry', () => {
     expect(adrenalineRateFactor(1, 0)).toBe(1);             // no active streak
     expect(adrenalineRateFactor(1, 3)).toBeCloseTo(1.09);   // 3 × 0.03 × 1
     expect(adrenalineRateFactor(3, 100)).toBeCloseTo(1.45); // hard cap at +45%
+  });
+});
+
+describe('homing missile', () => {
+  const makeEnemy = (x: number, y: number): Enemy => ({
+    ...scaleEnemyStats('basic', 0), id: `e-${x}-${y}`, position: { x, y }, velocity: { x: 0, y: 0 }, cooldown: 0, hitFlash: 0,
+  });
+
+  it('fires a single homing missile projectile', () => {
+    const weapon = { ...createStartingWeapons().find((w) => w.id === 'homing-missile')!, level: 1, unlocked: true };
+    const shots = fireWeaponAtTarget(weapon, createStartingPlayer({ x: 0, y: 0 }), makeEnemy(100, 0), () => 0.5);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].kind).toBe('missile');
+    expect(shots[0].homingTurnRate ?? 0).toBeGreaterThan(0);
+  });
+
+  it('steers a missile toward the nearest enemy while preserving its speed', () => {
+    const missile: Projectile = {
+      id: 'm', owner: 'player', kind: 'missile', position: { x: 0, y: 0 }, velocity: { x: 200, y: 0 },
+      radius: 7, damage: 10, life: 2, maxLife: 2, pierce: 1, color: '#fff', homingTurnRate: 4, hitIds: new Set(),
+    };
+    const speedBefore = Math.hypot(missile.velocity.x, missile.velocity.y);
+    updateProjectiles([missile], 0.1, [makeEnemy(0, 300)]); // enemy straight down (+y)
+    expect(missile.velocity.y).toBeGreaterThan(0); // turned toward the enemy
+    expect(Math.hypot(missile.velocity.x, missile.velocity.y)).toBeCloseTo(speedBefore, 4);
+  });
+
+  it('ignores homing when no enemy list is supplied (enemy projectiles never home)', () => {
+    const missile: Projectile = {
+      id: 'm', owner: 'player', kind: 'missile', position: { x: 0, y: 0 }, velocity: { x: 200, y: 0 },
+      radius: 7, damage: 10, life: 2, maxLife: 2, pierce: 1, color: '#fff', homingTurnRate: 4, hitIds: new Set(),
+    };
+    updateProjectiles([missile], 0.1); // no enemies arg
+    expect(missile.velocity.y).toBe(0); // unchanged heading
+  });
+
+  it('evolved Swarm Battery fires a three-missile volley', () => {
+    const weapon = { ...createStartingWeapons().find((w) => w.id === 'homing-missile')!, level: 6, unlocked: true, evolved: true, evolutionId: 'swarm-battery' };
+    const shots = fireWeaponAtTarget(weapon, createStartingPlayer({ x: 0, y: 0 }), makeEnemy(100, 0), () => 0.5);
+    expect(shots).toHaveLength(3);
+    expect(shots.every((s) => s.kind === 'missile')).toBe(true);
   });
 });
 

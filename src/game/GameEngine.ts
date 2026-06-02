@@ -433,7 +433,7 @@ export class GameEngine {
       this.updateRangedEnemies(scaledDt);
     }
 
-    this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, scaledDt);
+    this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, scaledDt, this.state.enemies);
     this.state.enemyProjectiles = updateProjectiles(this.state.enemyProjectiles, scaledDt);
     this.resolveCombat();
     this.updateGems(scaledDt);
@@ -1627,6 +1627,37 @@ export class GameEngine {
         ctx.translate(projectile.position.x, projectile.position.y);
         ctx.rotate(angle);
         this.drawSprite(ctx, sprites.arrow, 0, 0, projectile.radius * 7.2, projectile.radius * 4.2);
+      } else if (projectile.kind === 'missile') {
+        const angle = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+        const speed = Math.sqrt(projectile.velocity.x * projectile.velocity.x + projectile.velocity.y * projectile.velocity.y) || 1;
+        const r = projectile.radius;
+
+        if (!this.fastRender) {
+          // Exhaust streak behind the missile.
+          ctx.globalAlpha = (projectile.alpha ?? 1) * 0.4;
+          ctx.strokeStyle = projectile.color;
+          ctx.lineWidth = Math.max(2, r * 0.7);
+          ctx.beginPath();
+          ctx.moveTo(projectile.position.x - (projectile.velocity.x / speed) * r * 3.6, projectile.position.y - (projectile.velocity.y / speed) * r * 3.6);
+          ctx.lineTo(projectile.position.x, projectile.position.y);
+          ctx.stroke();
+          ctx.globalAlpha = projectile.alpha ?? 1;
+        }
+
+        ctx.translate(projectile.position.x, projectile.position.y);
+        ctx.rotate(angle);
+        if (this.glowScale > 0) {
+          ctx.shadowColor = projectile.color;
+          ctx.shadowBlur = 8 * this.glowScale;
+        }
+        ctx.fillStyle = projectile.color;
+        ctx.beginPath();
+        ctx.moveTo(r * 1.6, 0);
+        ctx.lineTo(-r, r * 0.8);
+        ctx.lineTo(-r * 0.4, 0);
+        ctx.lineTo(-r, -r * 0.8);
+        ctx.closePath();
+        ctx.fill();
       } else {
         const sprite = projectile.kind === 'ranged' ? sprites.ranged : sprites.bolt;
         this.drawSprite(ctx, sprite, projectile.position.x, projectile.position.y, projectile.radius * 5);

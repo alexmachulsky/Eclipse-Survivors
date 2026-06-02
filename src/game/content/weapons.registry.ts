@@ -83,6 +83,37 @@ function firePiercingArrow({ weapon, player, target }: FireContext): Projectile[
   });
 }
 
+function fireHomingMissile({ weapon, player, target }: FireContext): Projectile[] {
+  const angle = angleTo(player.position, target.position);
+  const levelBonus = Math.max(0, weapon.level - 1);
+  const damage = Math.round(weapon.damage * player.damageMultiplier * (1 + levelBonus * 0.3));
+  const projectileSpeed = player.projectileSpeedMultiplier;
+  // Evolved "Swarm Battery" fires a three-missile fan that turns harder.
+  const projectileCount = weapon.evolved ? 3 : 1;
+
+  return Array.from({ length: projectileCount }, (_, index) => {
+    const spread = projectileCount === 1 ? 0 : (index - 1) * 0.5;
+
+    return {
+      id: nextProjectileId('missile'),
+      owner: 'player',
+      weaponId: weapon.id,
+      kind: 'missile',
+      position: { ...player.position },
+      // Slow muzzle speed — the homing is what lands the hit, not the velocity.
+      velocity: vectorFromAngle(angle + spread, (weapon.evolved ? 300 : 260) * projectileSpeed),
+      radius: 7,
+      damage: weapon.evolved ? Math.round(damage * 1.15) : damage,
+      life: 2.4,
+      maxLife: 2.4,
+      pierce: 1,
+      color: '#ffb060',
+      homingTurnRate: weapon.evolved ? 5.5 : 4,
+      hitIds: new Set<string>(),
+    };
+  });
+}
+
 export const WEAPONS: Record<string, WeaponDef> = {
   'magic-bolt': {
     id: 'magic-bolt',
@@ -127,5 +158,16 @@ export const WEAPONS: Record<string, WeaponDef> = {
     tags: ['projectile'],
     evolutionId: 'comet-volley',
     fire: firePiercingArrow,
+  },
+  'homing-missile': {
+    id: 'homing-missile',
+    name: 'Seeker Missile',
+    baseFireRate: 1.5,
+    baseDamage: 26,
+    baseRange: 760,
+    unlockedAtStart: false,
+    tags: ['projectile', 'homing'],
+    evolutionId: 'swarm-battery',
+    fire: fireHomingMissile,
   },
 };

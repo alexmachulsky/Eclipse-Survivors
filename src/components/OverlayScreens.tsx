@@ -574,11 +574,13 @@ const WEAPON_NAME_TO_ID: Record<string, keyof typeof WeaponIconMap> = {
   'Astral Orbit': 'orbit',
   'Area Pulse': 'area-pulse',
   'Piercing Arrow': 'piercing-arrow',
+  'Seeker Missile': 'homing-missile',
   // Evolutions reuse the base icon as a visual hint.
   'Starfall Lance': 'magic-bolt',
   'Gravitic Halo': 'orbit',
   'Supernova Bloom': 'area-pulse',
   'Comet Volley': 'piercing-arrow',
+  'Swarm Battery': 'homing-missile',
 };
 
 export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps) {

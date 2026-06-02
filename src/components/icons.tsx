@@ -43,6 +43,18 @@ export function PiercingArrowIcon({ size = 24, color = 'currentColor' }: IconPro
   );
 }
 
+export function SeekerMissileIcon({ size = 24, color = 'currentColor' }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {/* missile body angled up-right, with fins and an exhaust spark */}
+      <path d="M5 19 L15 9" />
+      <path d="M15 9 L19 5 L18 10 L13 11 Z" fill={color} stroke="none" />
+      <path d="M9 13 L7 11 M11 15 L9 17" opacity="0.7" />
+      <circle cx="5" cy="19" r="1.5" fill={color} stroke="none" opacity="0.8" />
+    </svg>
+  );
+}
+
 export function DamageIcon({ size = 24, color = 'currentColor' }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -139,6 +151,7 @@ export const WeaponIconMap: Record<WeaponId, (props: IconProps) => JSX.Element> 
   'orbit': OrbitIcon,
   'area-pulse': AreaPulseIcon,
   'piercing-arrow': PiercingArrowIcon,
+  'homing-missile': SeekerMissileIcon,
 };
 
 export function LockIcon({ size = 24, color = 'currentColor' }: IconProps) {

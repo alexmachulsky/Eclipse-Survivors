@@ -84,7 +84,7 @@ export interface Enemy {
 }
 
 export type ProjectileOwner = 'player' | 'enemy';
-export type ProjectileKind = 'bolt' | 'arrow' | 'pulse' | 'ranged';
+export type ProjectileKind = 'bolt' | 'arrow' | 'pulse' | 'ranged' | 'missile';
 
 export interface Projectile {
   id: string;
@@ -103,6 +103,7 @@ export interface Projectile {
   alpha?: number;
   maxRadius?: number;
   hitIds?: Set<string>;
+  homingTurnRate?: number;  // rad/s a 'missile' steers toward the nearest enemy (undefined = no homing)
 }
 
 // String aliases — actual valid values live in src/game/content/*.registry.ts.

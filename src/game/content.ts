@@ -105,6 +105,13 @@ export const EVOLUTIONS: EvolutionDefinition[] = [
     description: 'Piercing Arrow becomes a high-speed three-arrow fan',
     weaponId: 'piercing-arrow',
     passiveId: 'keen-fletching'
+  },
+  {
+    id: 'swarm-battery',
+    name: 'Swarm Battery',
+    description: 'Seeker Missile fires a three-missile volley that turns harder',
+    weaponId: 'homing-missile',
+    passiveId: 'void-core'
   }
 ];
 

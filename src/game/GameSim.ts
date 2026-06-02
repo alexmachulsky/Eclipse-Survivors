@@ -285,7 +285,7 @@ export class GameSim {
     this.updateWeapons(cappedDt);
     this.updateEnemies(cappedDt);
     this.updateRangedEnemies(cappedDt);
-    this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, cappedDt);
+    this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, cappedDt, this.state.enemies);
     this.state.enemyProjectiles = updateProjectiles(this.state.enemyProjectiles, cappedDt);
     this.resolveCombat();
     this.updateGems(cappedDt);
