@@ -5,6 +5,7 @@ import { loadRunHistory, type RunHistory } from '../game/persistence';
 import { loadWallet, type Wallet } from '../game/wallet';
 import { WeaponTile } from './Hud';
 import { AreaPulseIcon, MagicBoltIcon, OrbitIcon, PiercingArrowIcon, WeaponIconMap } from './icons';
+import { useFocusTrap } from './useFocusTrap';
 
 interface MenuProps {
   onStart: () => void;
@@ -501,9 +502,17 @@ export function LanLobby({
 }
 
 export function PauseMenu({ weapons, snapshot, onResume, onRestart }: PauseProps) {
+  const trapRef = useFocusTrap<HTMLDivElement>();
   return (
     <div className="overlay">
-      <div className="panel pause-panel">
+      <div
+        className="panel pause-panel"
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Paused — run suspended"
+        tabIndex={-1}
+      >
         <p className="eyebrow">Paused</p>
         <h2>Run suspended</h2>
         <dl className="pause-stats">
@@ -574,6 +583,7 @@ const WEAPON_NAME_TO_ID: Record<string, keyof typeof WeaponIconMap> = {
 
 export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps) {
   const { stats } = snapshot;
+  const trapRef = useFocusTrap<HTMLDivElement>();
   const history = loadRunHistory();
   const isNewRecord = history.best && (
     stats.timeSurvived > history.best.timeSurvived ||
@@ -595,7 +605,14 @@ export function EndScreen({ snapshot, onRestart, victory = false }: SummaryProps
 
   return (
     <div className="overlay">
-      <div className={panelClassname}>
+      <div
+        className={panelClassname}
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={victory ? 'Victory' : 'Game Over'}
+        tabIndex={-1}
+      >
         {isNewRecord && <div className="record-badge">★ NEW RECORD</div>}
         <p className="eyebrow">{victory ? 'Victory' : 'Game Over'}</p>
         <h2>{headerText}</h2>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { UpgradeOption } from '../game/types';
 import { StarIcon, StatIconMap, WeaponIconMap, LockIcon, UnlockIcon, RerollIcon, BanishIcon } from './icons';
+import { useFocusTrap } from './useFocusTrap';
 
 interface UpgradeScreenProps {
   choices: UpgradeOption[];
@@ -106,6 +107,7 @@ export function UpgradeScreen({
   agency, lockedSlot = null, onReroll, onBanish, onLock,
 }: UpgradeScreenProps) {
   const [banishMode, setBanishMode] = useState(false);
+  const trapRef = useFocusTrap<HTMLDivElement>();
 
   useEffect(() => {
     setBanishMode(false);
@@ -123,7 +125,14 @@ export function UpgradeScreen({
 
   return (
     <div className="overlay">
-      <div className="panel upgrade-panel">
+      <div
+        className="panel upgrade-panel"
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${label}: ${title}`}
+        tabIndex={-1}
+      >
         <p className="eyebrow">{label}</p>
         <h2>{title}</h2>
         <div className="upgrade-grid">
