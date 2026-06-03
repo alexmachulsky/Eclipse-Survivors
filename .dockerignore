@@ -12,7 +12,10 @@ test-results
 .env.*
 .codex
 .claude
+.superpowers
 .agents
+.vscode
+.idea
 .worktrees
 .github/instructions
 .github/prompts
