@@ -23,11 +23,17 @@ coverage/
 # AI agent / model config files and directories
 .codex
 .claude/
+.superpowers/
+.agents/
 .github/instructions/
 .github/prompts/
 .github/agents/
 .github/hooks/
 docs/
+
+# Editor / IDE config (personal, not project source)
+.vscode/
+.idea/
 
 # Playwright MCP session artifacts
 .playwright-mcp/
@@ -35,3 +41,7 @@ docs/
 # Loose screenshot artifacts
 *.png
 *.log
+
+# OS junk files
+.DS_Store
+Thumbs.db
