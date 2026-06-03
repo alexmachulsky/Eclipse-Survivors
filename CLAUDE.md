@@ -67,7 +67,7 @@ All mutable game state lives inside `GameEngine` (`src/game/GameEngine.ts`). Rea
 - Sub-modules (`enemies.ts`, `player.ts`, `projectiles.ts`, etc.) receive slices of state and return new values — they do not mutate `GameState` directly. Only `GameEngine` writes results back.
 - Never import `GameState` or `GameEngine` into a sub-module. Pass only what the function needs.
 - **`update(dt)` is simulation-only** — no canvas API calls, no DOM access.
-- **`render(ctx)` is rendering-only** — no mutation of `GameState`, no RNG calls.
+- **`render(ctx)` is rendering-only** — no mutation of `GameState`, and no `this.rng()` (one known wart: `drawRangedEnemy` jitters with `this.rng()` for a pre-fire wobble — don't add more, since consuming RNG during render couples the sequence to frame count).
 - All randomness in `update()` must go through `this.rng` (or the `rng` argument passed to sub-modules), not `Math.random()`.
 
 ### Game state
@@ -94,7 +94,7 @@ Meter bar-fill rules must use the direct-child combinator (`.health-meter > span
 
 - Use `circlesOverlapSq` / `distanceSq` from `collisions.ts` in loops — **not** `Math.hypot` or `distance`.
 - Avoid allocating new objects inside `update()` and `resolveCombat()` — filter arrays in-place or reuse existing objects.
-- Always cap `dt` to `0.05` before passing to sub-modules (`Math.min(dt, 0.05)`) to prevent physics tunneling on tab wake-up.
+- Always cap `dt` to `0.05` before passing to sub-modules to prevent physics tunneling on tab wake-up. `GameEngine` additionally scales by `state.timeScale` first — `Math.min(0.05, dt * timeScale)` — to drive the brief level-up slow-mo (`timeScale` drops to `0.35` on level-up and ramps back to `1.0`).
 
 ### Render assets
 
@@ -110,7 +110,7 @@ Meter bar-fill rules must use the direct-child combinator (`.health-meter > span
 
 ### Weapons
 
-Five weapons: `magic-bolt` (auto-aimed bolt), `orbit` (rotating blades that resolve hits directly), `area-pulse` (expanding ring), `piercing-arrow` (long-range, multi-pierce), `homing-missile` (Seeker Missile — slow muzzle speed, tracks via the projectile's `homingTurnRate` field). Only `magic-bolt` is unlocked at game start; the rest are offered as level-up upgrades. Orbit hits are resolved in the engine loop without creating `Projectile` objects.
+Five weapons: `magic-bolt` (auto-aimed bolt), `orbit` (rotating blades that resolve hits directly), `area-pulse` (expanding ring), `piercing-arrow` (long-range, multi-pierce), `homing-missile` (Seeker Missile — slow muzzle speed, tracks via the projectile's `homingTurnRate` field). Only `magic-bolt` is unlocked at game start; the rest are offered as level-up upgrades. `orbit` **and** `area-pulse` resolve their hits directly in the engine loop without creating `Projectile` objects — both declare `fire: () => []` in the registry, and `GameEngine` special-cases them instead of going through the normal projectile path.
 
 Weapons, passives, and evolutions live in data-driven registries under `src/game/content/`: `weapons.registry.ts` (each entry owns its `fire(ctx)` function), `passives.registry.ts` (each entry owns `apply(player)`), `evolutions.registry.ts` (each entry declares the weapon/passive pairing and level requirements). `WeaponId`, `PassiveId`, and `EvolutionId` are `string` aliases — the registries are the source of truth for valid ids.
 
@@ -122,7 +122,7 @@ Weapons, passives, and evolutions live in data-driven registries under `src/game
 
 ### Upgrade agency (reroll / banish / lock)
 
-Solo runs only — LAN is intentionally unchanged this slice. `GameState.agency` tracks per-level-up `rerolls` (default 2) and `locks` (default 1), plus per-run `banishes` (default 1). `bannedUpgradeIds` and `lockedSlot` live on `GameState`; `bannedUpgradeIds` persists across level-ups, `lockedSlot` resets on `selectUpgrade`. Engine commands: `rerollChoices()`, `banishChoice(index)`, `lockChoice(index)` — all no-op outside the `levelUp` phase. `createUpgradeChoices` accepts `bannedIds` and an optional `preserveCard` (locked card always lands in slot 0 after a reroll).
+Solo runs only — LAN is intentionally unchanged this slice. `GameState.agency` tracks `rerolls` (default 2, `maxRerolls`) and `locks` (default 1, `maxLocks`) — both refill to their max on **every** level-up — plus `banishes` (default 1), a fixed per-run budget that has **no** `maxBanishes` field and is never refilled. Don't "fix" that asymmetry by adding per-level banish restoration; it's deliberate. `bannedUpgradeIds` and `lockedSlot` live on `GameState`; `bannedUpgradeIds` persists across level-ups, `lockedSlot` resets on `selectUpgrade`. Engine commands: `rerollChoices()`, `banishChoice(index)`, `lockChoice(index)` — all no-op outside the `levelUp` phase. `createUpgradeChoices` accepts `bannedIds` and an optional `preserveCard` (locked card always lands in slot 0 after a reroll).
 
 ### Persistence
 
@@ -132,7 +132,7 @@ Solo runs only — LAN is intentionally unchanged this slice. `GameState.agency`
 
 ### LAN multiplayer
 
-`src/game/GameSim.ts` is the pure-simulation class (no canvas/DOM) that runs on both the authoritative WebSocket server (`server/index.ts`, using `ws`) and is imported by `GameEngine`. `LanGameCanvas` (wired in `App.tsx`) renders server snapshots on the client. Do not introduce canvas/DOM imports into `GameSim.ts` — it must stay pure TypeScript with no browser globals.
+`src/game/GameSim.ts` is the pure-simulation class (no canvas/DOM) that runs the authoritative game on the WebSocket server (`server/index.ts`, using `ws`). **`GameSim` and `GameEngine` are separate, parallel implementations that never import each other** — `GameSim` is referenced only by `server/index.ts` and tests; `GameEngine` is the browser engine. They are kept in lockstep through the shared pure functions in `simulation.ts` (see below), *not* through code reuse. On the client, LAN runs do not simulate: `LanGameCanvas` (wired in `App.tsx`) reuses `GameEngine` purely as a **renderer**, feeding each server snapshot in via `engine.loadMultiplayerState(...)`. Do not introduce canvas/DOM imports into `GameSim.ts` — it must stay pure TypeScript with no browser globals.
 
 `src/game/simulation.ts` holds the spawn-pack, objective-curse, and on-kill passive (Bloodlust, Adrenal Surge) math as pure functions that **both** `GameEngine` and `GameSim` call — keeping the solo and authoritative sims in lockstep is what prevents multiplayer desync. Like `GameSim.ts`, it must stay pure (no canvas/DOM/module-level mutable state) and route all randomness through the caller-supplied `rng`. Mind the deliberate mutation asymmetry in that module: `applyCurseToEnemy` returns a **new** enemy (used for fresh spawns), while `applyCurseToExistingEnemies` / `relieveCurseFromExistingEnemies` mutate the live array **in place** (applied/peeled when an objective resolves). Don't unify them — the spawn path must stay copy-on-write while the on-resolve path is an in-place sweep.
 
@@ -140,14 +140,14 @@ Solo runs only — LAN is intentionally unchanged this slice. `GameState.agency`
 
 Tests run under Vitest with `environment: 'node'` (no jsdom). The canvas API is manually stubbed via `installCanvasStub()` for tests that exercise rendering paths.
 
-- Game logic: `src/game/gameLogic.test.ts`; dash math: `src/game/dash.test.ts`.
+- Game logic: `src/game/gameLogic.test.ts`; dash math: `src/game/dash.test.ts`; HUD-update throttle: `src/components/hudThrottle.test.ts`.
 - Server tests in `server/`: `originPolicy.test.ts` (WS origin allowlist), `security.test.ts` (rate limiting, payload caps), `multiRoom.test.ts` (room lifecycle), `dash.test.ts` (server-authoritative dash).
 
 ### Extending the game
 
 **New enemy type:** Add type to `EnemyType` union in `types.ts` → add blueprint in `enemies.ts` → add render logic in `GameEngine.ts` → weight into `chooseEnemyType()` in `enemies.ts`. (Enemies still use a string-literal union; only weapons/passives/evolutions moved to registries.)
 
-**New weapon:** Add an entry to `WEAPONS` in `src/game/content/weapons.registry.ts` (id, metadata, `fire(ctx)` returning `Projectile[]`) → register the weapon in `state.ts:createStartingWeapons()` with `unlocked: false`. The level-up roller in `rewards.ts:createWeaponChoices` reads from the live `Weapon[]`, so no extra card wiring is needed. `WeaponId` is `string` — do not edit `types.ts`.
+**New weapon:** Add an entry to `WEAPONS` in `src/game/content/weapons.registry.ts` (id, metadata, `fire(ctx)` returning `Projectile[]`) → register the weapon in `state.ts:createStartingWeapons()` with `unlocked: false`. The level-up roller in `rewards.ts:createWeaponChoices` reads from the live `Weapon[]`, so no extra card wiring is needed. `WeaponId` is `string` — do not edit `types.ts`. If the weapon resolves hits directly instead of spawning projectiles (like `orbit`/`area-pulse`), return `[]` from `fire` and add the hit-resolution branch in the `GameEngine` firing loop.
 
 **New passive:** Two places (see the registry-vs-`content.ts` note under "Weapons"). (1) Add the `apply(player)` behavior to `PASSIVES` in `src/game/content/passives.registry.ts` — `applyUpgrade` dispatches through the registry, no per-passive branching. (2) Add matching card metadata (`name`, `description`, `maxLevel`) to the `PASSIVES` array in `src/game/content.ts` — `createPassiveChoices` builds the level-up card from this. Skip (2) and the passive never appears as a card; skip (1) and the card has no effect; the sync test fails if ids or `maxLevel` diverge. To pair as an evolution, add an entry to `EVOLUTIONS` in `src/game/content/evolutions.registry.ts` with `weaponId`, `passiveId`, and the level requirements.
 
