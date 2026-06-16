@@ -68,6 +68,27 @@ export interface LanServerOptions {
   roomCreationWindowMs?: number;
   /** Max simultaneous pre-hello (unauthenticated) connections per client IP. */
   maxPendingConnectionsPerIp?: number;
+  /** Hard cap on simultaneous pre-hello connections across ALL IPs (DoS backstop). */
+  maxPendingConnectionsTotal?: number;
+  /**
+   * When true (the LAN-party default), genuine local-network browser origins
+   * are admitted even if not in `allowedOrigins`. Set false (ALLOW_LAN_ORIGINS=
+   * false) to enforce an explicit allowlist and refuse the local-network
+   * fallback.
+   */
+  allowLocalNetworkOrigins?: boolean;
+  /**
+   * Trust proxy forwarding headers (X-Real-IP / X-Forwarded-For) for per-IP
+   * throttling. Only safe behind a trusted reverse proxy that sets them. When
+   * false (default), the raw socket address is used so a directly-exposed
+   * server cannot be tricked into per-IP spoofing. Docker runs behind nginx and
+   * sets TRUST_PROXY=true.
+   */
+  trustProxyHeaders?: boolean;
+  /** Per-address failed room-join attempts allowed per window (anti brute-force). */
+  maxFailedJoinsPerWindow?: number;
+  /** Window for per-address failed-join throttling. */
+  failedJoinWindowMs?: number;
 }
 
 export interface LanServerHandle {
@@ -92,9 +113,13 @@ const DEFAULT_MAX_CLIENTS = 128;
 const DEFAULT_MAX_ROOM_CREATIONS_PER_WINDOW = 8;
 const DEFAULT_ROOM_CREATION_WINDOW_MS = 60_000;
 const DEFAULT_MAX_PENDING_PER_IP = 16;
+const DEFAULT_MAX_PENDING_TOTAL = 256;
+const DEFAULT_MAX_FAILED_JOINS_PER_WINDOW = 10;
+const DEFAULT_FAILED_JOIN_WINDOW_MS = 60_000;
 const MAX_NAME_LENGTH = 24;
+const MAX_ROOM_CODE_LENGTH = 16;
 const MAX_ROOM_NAME_LENGTH = 32;
-const ROOM_CODE_LENGTH = 4;
+const ROOM_CODE_LENGTH = 6; // 6 × 32-symbol alphabet ≈ 30 bits (was 4 ≈ 20 bits)
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // omits I, O, 0, 1
 const DEFAULT_ROOM_CODE = 'LOBBY';
 
@@ -118,7 +143,9 @@ function sanitizeRoomName(name: unknown, fallback: string): string {
 
 function normalizeRoomCode(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const trimmed = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Cap length before the regex so a multi-KB roomCode can't waste CPU or become
+  // a giant Map key. A real code is ROOM_CODE_LENGTH chars; the cap is generous.
+  const trimmed = value.slice(0, MAX_ROOM_CODE_LENGTH * 4).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, MAX_ROOM_CODE_LENGTH);
   if (!trimmed) return null;
   return trimmed;
 }
@@ -130,6 +157,16 @@ function parsePositiveInteger(value: string | undefined, fallback: number): numb
 
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  return fallback;
 }
 
 function generateRoomCode(taken: (code: string) => boolean): string {
@@ -205,7 +242,11 @@ function isLocalNetworkHostname(hostname: string): boolean {
   );
 }
 
-export function isAllowedOrigin(originHeader: string | undefined, allowedOrigins: string[]): boolean {
+export function isAllowedOrigin(
+  originHeader: string | undefined,
+  allowedOrigins: string[],
+  allowLocalNetwork = true
+): boolean {
   if (!originHeader) {
     return false;
   }
@@ -219,6 +260,13 @@ export function isAllowedOrigin(originHeader: string | undefined, allowedOrigins
 
   if (allowedOrigins.includes(origin.origin)) {
     return true;
+  }
+
+  // Local-network fallback for the LAN-party default. Opt-out (allowLocalNetwork
+  // = false) so an operator's explicit allowlist is never silently re-widened to
+  // every loopback/RFC1918/link-local origin.
+  if (!allowLocalNetwork) {
+    return false;
   }
 
   return (origin.protocol === 'http:' || origin.protocol === 'https:') && isLocalNetworkHostname(origin.hostname);
@@ -241,22 +289,29 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 /**
- * Resolve the real client IP. Behind the nginx reverse proxy (the only public
- * entry point in the docker deployment) the raw socket address is the proxy's,
- * so per-IP throttling collapses to a single bucket unless we read the
- * proxy-set forwarding headers. nginx sets X-Real-IP / X-Forwarded-For; we
- * trust them because the ws port is not publicly reachable except via nginx.
+ * Resolve the client IP used for per-IP throttling.
+ *
+ * Behind the nginx reverse proxy (the docker deployment's only public entry
+ * point) the raw socket address is the proxy's, so per-IP throttling collapses
+ * to a single bucket unless we read the proxy-set X-Real-IP / X-Forwarded-For
+ * headers. But those headers are client-settable, so trusting them on a
+ * directly-exposed server lets an attacker forge a fresh IP per request and
+ * sail past every per-IP cap. We therefore only honor them when explicitly told
+ * we sit behind a trusted proxy (TRUST_PROXY=true); otherwise we use the
+ * unspoofable socket address.
  */
-function getClientIp(request: IncomingMessage): string {
-  const realIp = request.headers['x-real-ip'];
-  if (typeof realIp === 'string' && realIp.trim()) {
-    return realIp.trim();
-  }
+function getClientIp(request: IncomingMessage, trustProxyHeaders: boolean): string {
+  if (trustProxyHeaders) {
+    const realIp = request.headers['x-real-ip'];
+    if (typeof realIp === 'string' && realIp.trim()) {
+      return realIp.trim();
+    }
 
-  const forwarded = request.headers['x-forwarded-for'];
-  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  if (typeof forwardedValue === 'string' && forwardedValue.trim()) {
-    return forwardedValue.split(',')[0].trim();
+    const forwarded = request.headers['x-forwarded-for'];
+    const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    if (typeof forwardedValue === 'string' && forwardedValue.trim()) {
+      return forwardedValue.split(',')[0].trim();
+    }
   }
 
   return request.socket.remoteAddress ?? 'unknown';
@@ -303,7 +358,11 @@ function parseMessage(raw: RawData): ClientMessage | null {
     isFiniteNumber(parsed.aimWorldY) &&
     isBoolean(parsed.reviveHeld) &&
     isBoolean(parsed.dashHeld) &&
-    (parsed.seq === undefined || isFiniteNumber(parsed.seq))
+    // seq must be a non-negative safe integer. Rejecting fractional/negative/
+    // absurd values (e.g. 1e308) keeps a client from pinning its own
+    // lastCommandSeq sky-high and locking out all of its future commands.
+    (parsed.seq === undefined
+      || (isFiniteNumber(parsed.seq) && Number.isInteger(parsed.seq) && parsed.seq >= 0 && parsed.seq <= Number.MAX_SAFE_INTEGER))
   ) {
     return parsed as ClientMessage;
   }
@@ -353,8 +412,18 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
     ?? parsePositiveInteger(process.env.LAN_ROOM_CREATION_WINDOW_MS, DEFAULT_ROOM_CREATION_WINDOW_MS);
   const maxPendingConnectionsPerIp = options.maxPendingConnectionsPerIp
     ?? parsePositiveInteger(process.env.LAN_MAX_PENDING_PER_IP, DEFAULT_MAX_PENDING_PER_IP);
+  const maxPendingConnectionsTotal = options.maxPendingConnectionsTotal
+    ?? parsePositiveInteger(process.env.LAN_MAX_PENDING_TOTAL, DEFAULT_MAX_PENDING_TOTAL);
+  const allowLocalNetworkOrigins = options.allowLocalNetworkOrigins
+    ?? parseBooleanEnv(process.env.ALLOW_LAN_ORIGINS, true);
+  const trustProxyHeaders = options.trustProxyHeaders
+    ?? parseBooleanEnv(process.env.TRUST_PROXY, false);
+  const maxFailedJoinsPerWindow = options.maxFailedJoinsPerWindow
+    ?? parsePositiveInteger(process.env.LAN_MAX_FAILED_JOINS_PER_WINDOW, DEFAULT_MAX_FAILED_JOINS_PER_WINDOW);
+  const failedJoinWindowMs = options.failedJoinWindowMs
+    ?? parsePositiveInteger(process.env.LAN_FAILED_JOIN_WINDOW_MS, DEFAULT_FAILED_JOIN_WINDOW_MS);
 
-  if (process.env.ALLOWED_ORIGINS && allowedOrigins.length === 0) {
+  if (process.env.ALLOWED_ORIGINS && allowedOrigins.length === 0 && allowLocalNetworkOrigins) {
     console.warn(
       '[lan-server] ALLOWED_ORIGINS is set but produced an empty allowlist; only local-network origins will be admitted.'
     );
@@ -363,9 +432,26 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
   const rooms = new Map<string, Room>();
   const clients = new Map<WebSocket, ClientConnection>();
   const roomCreationWindows = new Map<string, { startedAt: number; count: number }>();
+  const failedJoinWindows = new Map<string, { startedAt: number; count: number }>();
   const pendingByIp = new Map<string, number>();
+  let pendingTotal = 0;
   let lastTick = Date.now();
   let snapshotAccumulator = 0;
+
+  // Throttle repeated failed room joins from one address so the ~30-bit room-code
+  // space can't be brute-forced by cycling connections. Returns false once the
+  // per-window budget is spent. Counts only *misses* — a correct code never
+  // increments — so legitimate players are unaffected.
+  function consumeFailedJoin(remoteAddress: string): boolean {
+    const now = Date.now();
+    const current = failedJoinWindows.get(remoteAddress);
+    if (!current || now - current.startedAt >= failedJoinWindowMs) {
+      failedJoinWindows.set(remoteAddress, { startedAt: now, count: 1 });
+      return true;
+    }
+    current.count += 1;
+    return current.count <= maxFailedJoinsPerWindow;
+  }
 
   function reject(socket: WebSocket, message: string, code = 1013): void {
     send(socket, { type: 'error', message });
@@ -480,7 +566,7 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
     room: Room,
     name: string,
     reconnectToken: string | undefined
-  ): { player: PlayerRuntime; reconnectToken: string } {
+  ): { player: PlayerRuntime; reconnectToken: string; previousToken?: string } {
     const existingRecord = reconnectToken ? room.sessions.get(reconnectToken) : undefined;
     const existing = existingRecord ? room.sim.getState().players.find((player) => player.id === existingRecord.playerId) : undefined;
 
@@ -488,8 +574,16 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       room.sim.markConnected(existing.id);
       existing.name = sanitizeName(name, existing.name);
       existingRecord.disconnectedAt = null;
+      // SECURITY: rotate the reconnect token on every successful reconnect. The
+      // token is a bearer credential delivered in the cleartext `welcome`, so a
+      // captured copy is replayable. Rotation invalidates the old token the
+      // moment the legitimate owner reconnects once, shrinking the replay window
+      // (use wss:// across untrusted networks for full confidentiality).
+      const rotatedToken = randomUUID();
+      room.sessions.delete(reconnectToken);
+      room.sessions.set(rotatedToken, existingRecord);
       updateHost(room);
-      return { player: existing, reconnectToken };
+      return { player: existing, reconnectToken: rotatedToken, previousToken: reconnectToken };
     }
 
     const token = randomUUID();
@@ -590,11 +684,13 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
     // Legacy single-room mode: every hello must match the configured roomCode,
     // and multi-room creation/join is disabled.
     if (legacyRoomCode) {
-      if (message.roomCode !== legacyRoomCode && message.action) {
-        socket.close(1008, 'invalid room');
-        return null;
-      }
-      if (message.roomCode && message.roomCode !== legacyRoomCode) {
+      // SECURITY: require the access code on EVERY hello, including ones that
+      // omit roomCode entirely. The previous two-guard form only rejected a
+      // *wrong* code; a hello with no roomCode and no action slipped past both
+      // guards and fell through to ensureDefaultRoom, bypassing the gate. Match
+      // normalizeRoomCode semantics so the comparison is case/format-insensitive.
+      if (normalizeRoomCode(message.roomCode) !== normalizeRoomCode(legacyRoomCode)) {
+        send(socket, { type: 'error', message: 'A valid room code is required.' });
         socket.close(1008, 'invalid room');
         return null;
       }
@@ -626,6 +722,14 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       }
       const room = rooms.get(code);
       if (!room) {
+        // SECURITY: throttle repeated misses per address so the ~30-bit room-code
+        // space can't be brute-forced by cycling join attempts. A correct guess
+        // never increments the counter, so honest players are never throttled.
+        if (!consumeFailedJoin(remoteAddress)) {
+          send(socket, { type: 'error', message: 'Too many failed join attempts. Try again later.' });
+          socket.close(1013, 'join throttled');
+          return null;
+        }
         send(socket, { type: 'error', message: 'Room not found. Double-check the code with the host.' });
         socket.close(1008, 'room not found');
         return null;
@@ -669,7 +773,7 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       return;
     }
 
-    let claimed: { player: PlayerRuntime; reconnectToken: string };
+    let claimed: { player: PlayerRuntime; reconnectToken: string; previousToken?: string };
     try {
       claimed = claimPlayer(room, message.name ?? '', effectiveReconnect);
     } catch (error) {
@@ -680,10 +784,17 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       socket.close(1013, 'room full');
       return;
     }
-    const previousSocket = room.activeSessions.get(claimed.reconnectToken);
 
+    // A reconnect rotates the token, so the prior live socket (if any) is keyed
+    // under the OLD token. Close it and drop the stale mapping before installing
+    // the new one, so activeSessions never retains the pre-rotation key.
+    const priorKey = claimed.previousToken ?? claimed.reconnectToken;
+    const previousSocket = room.activeSessions.get(priorKey);
     if (previousSocket && previousSocket !== socket) {
       previousSocket.close(4001, 'session replaced');
+    }
+    if (claimed.previousToken) {
+      room.activeSessions.delete(claimed.previousToken);
     }
 
     room.activeSessions.set(claimed.reconnectToken, socket);
@@ -755,11 +866,16 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
       deleteRoom(room);
     }
 
-    // Prune expired per-IP room-creation windows. Without this, the map grows
-    // unbounded — one lingering entry per unique IP that ever created a room.
+    // Prune expired per-IP throttle windows. Without this, the maps grow
+    // unbounded — one lingering entry per unique IP that ever hit the limiter.
     for (const [ip, window] of roomCreationWindows) {
       if (now - window.startedAt >= roomCreationWindowMs) {
         roomCreationWindows.delete(ip);
+      }
+    }
+    for (const [ip, window] of failedJoinWindows) {
+      if (now - window.startedAt >= failedJoinWindowMs) {
+        failedJoinWindows.delete(ip);
       }
     }
   }
@@ -767,7 +883,7 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
 
-    if (url.pathname !== '/ws' || !isAllowedOrigin(request.headers.origin, allowedOrigins)) {
+    if (url.pathname !== '/ws' || !isAllowedOrigin(request.headers.origin, allowedOrigins, allowLocalNetworkOrigins)) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
@@ -779,24 +895,30 @@ export function createLanServer(options: LanServerOptions = {}): LanServerHandle
   });
 
   wss.on('connection', (socket, request) => {
-    const remoteAddress = getClientIp(request);
+    const remoteAddress = getClientIp(request, trustProxyHeaders);
 
     // Cap simultaneous unauthenticated (pre-hello) connections per IP. The
     // global maxClients limit only counts fully joined clients, so without this
     // an attacker could exhaust file descriptors/memory by opening many sockets
     // and never sending a hello (Slowloris-style).
+    //
+    // The per-IP cap is the first line of defense, but if proxy-header trust is
+    // disabled (or many IPs are involved) it can't bound the absolute socket
+    // count, so a global pre-hello ceiling backstops it.
     const pending = pendingByIp.get(remoteAddress) ?? 0;
-    if (pending >= maxPendingConnectionsPerIp) {
+    if (pending >= maxPendingConnectionsPerIp || pendingTotal >= maxPendingConnectionsTotal) {
       socket.close(1013, 'too many pending connections');
       return;
     }
     pendingByIp.set(remoteAddress, pending + 1);
+    pendingTotal += 1;
     let pendingReleased = false;
     const releasePending = () => {
       if (pendingReleased) {
         return;
       }
       pendingReleased = true;
+      pendingTotal = Math.max(0, pendingTotal - 1);
       const next = (pendingByIp.get(remoteAddress) ?? 1) - 1;
       if (next <= 0) {
         pendingByIp.delete(remoteAddress);

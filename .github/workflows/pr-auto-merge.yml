@@ -30,13 +30,41 @@ jobs:
       - name: Run tests
         run: npm test
 
+  gate:
+    name: Security-path gate
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      sensitive: ${{ steps.check.outputs.sensitive }}
+    steps:
+      - uses: actions/github-script@v7
+        id: check
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            });
+            // Server, deployment, dependency manifest, and CI changes carry the
+            // most security risk, so they must not ride the no-review auto-merge.
+            const sensitive = /^(server\/|\.github\/|Dockerfile$|docker-compose\.yml$|nginx\.conf$|package(-lock)?\.json$)/;
+            const hits = files.map(f => f.filename).filter(name => sensitive.test(name));
+            const isSensitive = hits.length > 0;
+            if (isSensitive) {
+              core.notice(`Security-sensitive paths changed (${hits.join(', ')}); auto-merge disabled — manual review + merge required.`);
+            }
+            core.setOutput('sensitive', String(isSensitive));
+
   auto-merge:
     name: Enable Auto-merge
     runs-on: ubuntu-latest
-    needs: ci
-    # Never auto-merge a draft PR — drafts are work-in-progress and a green
-    # build/test is the only gate, so this preserves the chance to review.
-    if: github.event.pull_request.draft == false
+    needs: [ci, gate]
+    # Never auto-merge a draft PR, and never auto-merge a PR that touches
+    # security-sensitive paths (server/deploy/CI/deps) — those require a human
+    # to review and merge manually. A green build/test is the gate for the rest.
+    if: github.event.pull_request.draft == false && needs.gate.outputs.sensitive == 'false'
     permissions:
       contents: write
       pull-requests: write

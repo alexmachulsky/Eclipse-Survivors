@@ -24,6 +24,11 @@ services:
     container_name: survival-multiplayer
     environment:
       ALLOWED_ORIGINS: "http://localhost:5176,http://127.0.0.1:5176"
+      # This service is only reachable via the nginx reverse proxy (expose, not
+      # ports), and nginx overwrites X-Real-IP with the genuine client address,
+      # so the forwarded headers are trustworthy here. Required for per-IP
+      # throttling to bucket by real client instead of the nginx container IP.
+      TRUST_PROXY: "true"
     expose:
       - "3001"
     restart: unless-stopped

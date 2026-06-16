@@ -1,0 +1,14 @@
+# Code owners for security-sensitive areas. Combined with a branch-protection
+# rule that requires review from code owners, these paths cannot merge without
+# an explicit human approval — see .github/workflows/pr-auto-merge.yml, which
+# also refuses to auto-merge any PR that touches them.
+#
+# NOTE: enforcement of "review required" still needs a branch-protection rule on
+# `main` (Settings → Branches) with "Require review from Code Owners" enabled.
+# The workflow gate is the in-repo half of the control.
+
+/server/                @alexmachulsky
+/.github/               @alexmachulsky
+/Dockerfile             @alexmachulsky
+/docker-compose.yml     @alexmachulsky
+/nginx.conf             @alexmachulsky

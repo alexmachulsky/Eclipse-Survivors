@@ -20,4 +20,16 @@ describe('websocket origin policy', () => {
     expect(isAllowedOrigin(undefined, [])).toBe(false);
     expect(isAllowedOrigin('not an origin', [])).toBe(false);
   });
+
+  it('refuses the local-network fallback when it is disabled', () => {
+    // Strict mode (allowLocalNetwork=false) must not silently re-widen an
+    // explicit allowlist back out to every loopback/RFC1918 origin.
+    expect(isAllowedOrigin('http://192.168.1.42:5176', [], false)).toBe(false);
+    expect(isAllowedOrigin('http://localhost:5176', [], false)).toBe(false);
+    expect(isAllowedOrigin('http://127.0.0.1:5176', [], false)).toBe(false);
+  });
+
+  it('still honors explicit origins in strict mode', () => {
+    expect(isAllowedOrigin('https://game.example', ['https://game.example'], false)).toBe(true);
+  });
 });
