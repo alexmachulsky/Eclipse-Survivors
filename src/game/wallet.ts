@@ -7,10 +7,19 @@ export interface Wallet {
 
 const KEY = 'eclipse-survivors:wallet';
 
-// Coerce a stored value to a safe, non-negative number. Guards against NaN,
-// Infinity, non-numbers and negative balances injected via edited localStorage.
+// SECURITY / TRUST BOUNDARY: this wallet is purely LOCAL, client-side cosmetic
+// progression. It is never sent to or trusted by the multiplayer server, so a
+// player editing localStorage only inflates their own offline shard count — no
+// impact on other players or server state. If shards ever gate gameplay,
+// cosmetics, accounts, or anything multiplayer-visible, the ledger MUST move
+// server-side. Until then we only sanitize on load to keep the UI/state sane.
+const MAX_AMOUNT = 1_000_000_000; // clamp tampered/corrupted values to a sane ceiling
+
+// Coerce a stored value to a safe, non-negative, capped number. Guards against
+// NaN, Infinity, non-numbers, negative and absurdly large balances injected via
+// edited localStorage.
 function sanitizeAmount(value: unknown): number {
-  return Number.isFinite(value) ? Math.max(0, value as number) : 0;
+  return Number.isFinite(value) ? Math.min(MAX_AMOUNT, Math.max(0, value as number)) : 0;
 }
 
 export function loadWallet(): Wallet {
