@@ -36,6 +36,11 @@ import type {
 
 const MAX_PLAYERS = 4;
 const PLAYER_COLORS = ['#5eead4', '#ffd166', '#ff5edb', '#a78bfa'];
+// Grace window restored after the level-up picker closes. resolveLevelUp parks
+// invulnerableTimer at a huge value so a 'choosing' player can't die with the
+// menu open; selectUpgrade must collapse it back to this short grace, or the
+// timer (never ticked while choosing) leaves the player invulnerable all run.
+const POST_UPGRADE_GRACE_SECONDS = 1;
 const MAX_PARTICLES = 220;
 const MAX_DAMAGE_TEXTS = 90;
 const MAX_TELEGRAPHS = 24;
@@ -247,6 +252,13 @@ export class GameSim {
     runtime.upgradeChoices = [];
     runtime.pendingChestChoices = [];
     runtime.status = runtime.player.health > 0 ? 'active' : 'downed';
+    // Collapse the level-up shield back to a short grace now that the menu is
+    // closed (see POST_UPGRADE_GRACE_SECONDS) — otherwise the parked ~9999 timer
+    // never decays and the player stays invulnerable for the rest of the run.
+    runtime.player = {
+      ...runtime.player,
+      invulnerableTimer: Math.min(runtime.player.invulnerableTimer, POST_UPGRADE_GRACE_SECONDS)
+    };
     this.addBurstParticles(runtime.player.position, choice.kind === 'evolution' ? '#ffd166' : runtime.color, choice.kind === 'evolution' ? 34 : 14);
   }
 
