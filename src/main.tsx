@@ -1,8 +1,5 @@
-import '@fontsource/cinzel/700.css';
-import '@fontsource/cormorant-garamond/500.css';
-import '@fontsource/cormorant-garamond/700.css';
-import '@fontsource/cormorant-garamond/500-italic.css';
-import '@fontsource/cormorant-garamond/700-italic.css';
+// Display face (Space Grotesk) is self-hosted via @font-face in styles.css.
+// DM Mono (tabular numbers / body text) stays on @fontsource.
 import '@fontsource/dm-mono/400.css';
 import '@fontsource/dm-mono/500.css';
 import React from 'react';

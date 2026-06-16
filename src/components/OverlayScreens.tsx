@@ -211,15 +211,15 @@ export function MainMenu({ onStart, onLanStart }: MenuProps) {
 
         <div className="almanac-strip" role="group" aria-label="Almanac">
           <div className="almanac-cell">
-            <span className="almanac-cell__label">Best Vigil</span>
+            <span className="almanac-cell__label">Best Time</span>
             <strong className="almanac-cell__value">{best ? formatTime(best.timeSurvived) : '—'}</strong>
           </div>
           <div className="almanac-cell">
-            <span className="almanac-cell__label">Tally</span>
+            <span className="almanac-cell__label">Kills</span>
             <strong className="almanac-cell__value">{best ? best.kills.toLocaleString() : '—'}</strong>
           </div>
           <div className="almanac-cell">
-            <span className="almanac-cell__label">Echelon</span>
+            <span className="almanac-cell__label">Level</span>
             <strong className="almanac-cell__value">{best ? `lv.${best.level}` : '—'}</strong>
           </div>
           {showShards && (

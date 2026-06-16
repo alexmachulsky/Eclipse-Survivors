@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { UpgradeOption } from '../game/types';
 import { StarIcon, StatIconMap, WeaponIconMap, LockIcon, UnlockIcon, RerollIcon, BanishIcon } from './icons';
 import { useFocusTrap } from './useFocusTrap';
+import { keyToBoonAction } from './boonKeys';
 
 interface UpgradeScreenProps {
   choices: UpgradeOption[];
@@ -17,6 +18,39 @@ interface UpgradeScreenProps {
 
 const PIP_COUNT = 8;
 
+type BoonRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+const RARITY_HEX: Record<BoonRarity, string> = {
+  common: '#9fb0c3',
+  rare: '#4aa8ff',
+  epic: '#b57bff',
+  legendary: '#ffc24d',
+};
+
+const RARITY_LABEL: Record<BoonRarity, string> = {
+  common: 'Common',
+  rare: 'Rare',
+  epic: 'Epic',
+  legendary: 'Legendary',
+};
+
+// Evolutions are the pinnacle, so they read as legendary gold regardless of the
+// raw `rarity` field; everything else uses its rarity (weapons default to rare).
+function cardRarity(choice: UpgradeOption): BoonRarity {
+  if (choice.kind === 'evolution') return 'legendary';
+  if (choice.rarity) return choice.rarity as BoonRarity;
+  return choice.kind === 'weapon' ? 'rare' : 'common';
+}
+
+function kindLabel(choice: UpgradeOption): string {
+  switch (choice.kind) {
+    case 'evolution': return 'Evolution';
+    case 'weapon': return 'Weapon';
+    case 'passive': return 'Passive';
+    default: return 'Stat';
+  }
+}
+
 function BoonCard({
   choice, index, isLocked, banishMode, onChoose, onLock, onBanish,
 }: {
@@ -29,20 +63,21 @@ function BoonCard({
   onBanish?: (index: number) => void;
 }) {
   const isWeapon = choice.kind === 'weapon' || choice.kind === 'evolution';
+  const rarity = cardRarity(choice);
+  const color = RARITY_HEX[rarity];
   const Icon = isWeapon
     ? (choice.weaponId ? WeaponIconMap[choice.weaponId] : null)
     : choice.kind === 'passive'
       ? StarIcon
       : (choice.stat ? StatIconMap[choice.stat] : null);
 
-  const currentLevel = isWeapon && choice.weaponId ? 1 : 0;
-  const tag = choice.kind === 'evolution' ? 'Evolution' : choice.kind === 'passive' ? 'Passive' : isWeapon ? 'Boon' : 'Stat';
+  const meta = choice.kind === 'evolution'
+    ? 'Weapon evolution'
+    : choice.kind === 'weapon' && choice.currentWeaponLevel !== undefined
+      ? `Lv ${choice.currentWeaponLevel} → ${choice.currentWeaponLevel + 1}`
+      : null;
 
-  const kindClass = choice.kind === 'evolution' ? 'evolution' : isWeapon ? 'weapon' : choice.kind === 'passive' ? 'passive' : 'stat';
-  const rarityClass = choice.rarity ? `card--${choice.rarity}` : '';
-  const evolutionClass = choice.kind === 'evolution' ? 'card--evolution' : '';
-  const lockClass = isLocked ? 'upgrade-card--locked' : '';
-  const banishClass = banishMode && !isLocked ? 'upgrade-card--banish-target' : '';
+  const pipFill = choice.kind === 'evolution' ? PIP_COUNT : (choice.currentWeaponLevel ?? 1);
 
   const handleClick = () => {
     if (banishMode && onBanish && !isLocked) {
@@ -54,47 +89,42 @@ function BoonCard({
 
   return (
     <button
-      className={`upgrade-card upgrade-card--${kindClass} ${rarityClass} ${evolutionClass} ${lockClass} ${banishClass}`.trim()}
-      style={{ '--idx': index } as React.CSSProperties}
+      className={`boon-card boon-card--${rarity}${choice.kind === 'evolution' ? ' boon-card--evolution' : ''}${isLocked ? ' is-locked' : ''}${banishMode && !isLocked ? ' is-banish' : ''}`}
+      style={{ ['--i' as string]: index } as React.CSSProperties}
       type="button"
       onClick={handleClick}
     >
+      <span className="boon-card__top" />
+      <span className="boon-card__key">{index + 1}</span>
+
       {onLock && (
         <button
-          className="upgrade-card__lock"
+          className="boon-card__lock"
           aria-label={isLocked ? 'Unlock card' : 'Lock card'}
           onClick={(e) => { e.stopPropagation(); onLock(index); }}
           type="button"
         >
-          {isLocked ? (
-            <LockIcon size={14} color="currentColor" />
-          ) : (
-            <UnlockIcon size={14} color="currentColor" />
-          )}
+          {isLocked ? <LockIcon size={14} color="currentColor" /> : <UnlockIcon size={14} color="currentColor" />}
         </button>
       )}
 
-      <span className="boon-tag">{tag}</span>
+      <span className="boon-card__ribbon">{RARITY_LABEL[rarity]} · {kindLabel(choice)}</span>
 
       {Icon && (
-        <div className="boon-icon">
-          <Icon size={40} color={isWeapon ? 'var(--c-rare)' : 'var(--c-common)'} />
-        </div>
+        <span className="boon-card__icon">
+          <Icon size={36} color={color} />
+        </span>
       )}
 
-      <strong className="boon-title">{choice.title}</strong>
-      {choice.kind === 'weapon' && choice.currentWeaponLevel !== undefined && (
-        <div className="upgrade-card__level">lv.{choice.currentWeaponLevel} → {choice.currentWeaponLevel + 1}</div>
-      )}
-      <small className="boon-desc">{choice.description}</small>
-      {choice.statDelta && (
-        <div className="upgrade-card__delta">{choice.statDelta}</div>
-      )}
+      <strong className="boon-card__title">{choice.title}</strong>
+      {meta && <span className="boon-card__meta">{meta}</span>}
+      <small className="boon-card__desc">{choice.description}</small>
+      {choice.statDelta && <span className="boon-card__delta">{choice.statDelta}</span>}
 
       {isWeapon && (
-        <div className="boon-pips">
+        <div className="boon-card__pips">
           {Array.from({ length: PIP_COUNT }, (_, i) => (
-            <span key={i} className={`pip${i < currentLevel ? ' pip--filled' : ''}`} />
+            <span key={i} className={`pip${i < pipFill ? ' pip--filled' : ''}`} />
           ))}
         </div>
       )}
@@ -108,10 +138,28 @@ export function UpgradeScreen({
 }: UpgradeScreenProps) {
   const [banishMode, setBanishMode] = useState(false);
   const trapRef = useFocusTrap<HTMLDivElement>();
+  const canReroll = !!(onReroll && agency && agency.rerolls > 0);
 
   useEffect(() => {
     setBanishMode(false);
   }, [choices]);
+
+  // Keyboard QoL: 1..N choose, Space rerolls. Suspended while picking a banish target.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (banishMode) return;
+      const action = keyToBoonAction(event.code, choices.length, canReroll);
+      if (!action) return;
+      event.preventDefault();
+      if (action.kind === 'reroll') {
+        onReroll?.();
+      } else {
+        onChoose(choices[action.index].id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [choices, canReroll, banishMode, onChoose, onReroll]);
 
   const handleBanishClick = () => {
     if (!agency || agency.banishes <= 0) return;
@@ -124,18 +172,19 @@ export function UpgradeScreen({
   };
 
   return (
-    <div className="overlay">
+    <div className="overlay overlay--boon">
       <div
-        className="panel upgrade-panel"
+        className="boon-modal"
         ref={trapRef}
         role="dialog"
         aria-modal="true"
         aria-label={`${label}: ${title}`}
         tabIndex={-1}
       >
-        <p className="eyebrow">{label}</p>
-        <h2>{title}</h2>
-        <div className="upgrade-grid">
+        <p className="boon-eyebrow">{label}</p>
+        <h2 className="boon-heading">{title}</h2>
+
+        <div className="upgrade-grid boon-grid">
           {choices.map((choice, i) => (
             <BoonCard
               key={choice.id}
@@ -149,32 +198,38 @@ export function UpgradeScreen({
             />
           ))}
         </div>
+
         {agency && (
-          <div className="upgrade-actions">
+          <div className="boon-actions">
             <button
               type="button"
-              className="upgrade-action"
+              className="boon-action"
               disabled={agency.rerolls <= 0}
               onClick={onReroll}
             >
               <RerollIcon size={14} color="currentColor" />
-              Reroll ({agency.rerolls})
+              Reroll <span className="boon-action__count">{agency.rerolls}</span>
             </button>
             <button
               type="button"
-              className={`upgrade-action ${banishMode ? 'upgrade-action--active' : ''}`}
+              className={`boon-action${banishMode ? ' is-active' : ''}`}
               disabled={agency.banishes <= 0}
               onClick={handleBanishClick}
             >
               <BanishIcon size={14} color="currentColor" />
-              {banishMode ? 'Pick card' : `Banish (${agency.banishes})`}
+              {banishMode ? 'Pick a card' : <>Banish <span className="boon-action__count">{agency.banishes}</span></>}
             </button>
-            <span className="upgrade-action upgrade-action--info">
+            <span className="boon-action boon-action--info">
               <LockIcon size={14} color="currentColor" />
-              Locks left: {agency.locks}
+              Locks <span className="boon-action__count">{agency.locks}</span>
             </span>
           </div>
         )}
+
+        <p className="boon-hint">
+          Press <kbd>1</kbd>–<kbd>{choices.length}</kbd> to choose
+          {canReroll ? <> · <kbd>Space</kbd> to reroll</> : null}
+        </p>
       </div>
     </div>
   );
