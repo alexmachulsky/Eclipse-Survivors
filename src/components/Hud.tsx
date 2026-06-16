@@ -7,6 +7,27 @@ import { useState, useRef, useEffect, memo } from 'react';
 interface HudProps {
   snapshot: GameSnapshot;
   onPause: () => void;
+  audioEnabled: boolean;
+  onToggleAudio: () => void;
+}
+
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 5 6 9H3v6h3l5 4V5z" fill="currentColor" stroke="none" />
+      {muted ? (
+        <>
+          <line x1="22" y1="9" x2="16" y2="15" />
+          <line x1="16" y1="9" x2="22" y2="15" />
+        </>
+      ) : (
+        <>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+          <path d="M18.5 6a9 9 0 0 1 0 12" />
+        </>
+      )}
+    </svg>
+  );
 }
 
 function formatTime(totalSeconds: number): string {
@@ -63,7 +84,7 @@ const DashPips = memo(function DashPips({ dash }: { dash: GameSnapshot['dash'] }
   return <div className="dash-pips" aria-label="Dash charges">{pips}</div>;
 });
 
-export const Hud = memo(function Hud({ snapshot, onPause }: HudProps) {
+export const Hud = memo(function Hud({ snapshot, onPause, audioEnabled, onToggleAudio }: HudProps) {
   const healthRatio = Math.max(0, snapshot.health / snapshot.maxHealth);
   const xpRatio = Math.max(0, Math.min(1, snapshot.xp / snapshot.xpToNext));
   const objective = snapshot.activeObjective;
@@ -226,6 +247,15 @@ export const Hud = memo(function Hud({ snapshot, onPause }: HudProps) {
         </div>
       </div>
 
+      <button
+        className="icon-button hud-mute-button"
+        type="button"
+        aria-label={audioEnabled ? 'Mute sound' : 'Unmute sound'}
+        aria-pressed={!audioEnabled}
+        onClick={onToggleAudio}
+      >
+        <SpeakerIcon muted={!audioEnabled} />
+      </button>
       <button className="icon-button hud-pause-button" type="button" aria-label="Pause" onClick={onPause}>
         &#x23F8;
       </button>

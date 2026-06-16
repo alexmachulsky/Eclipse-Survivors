@@ -163,6 +163,40 @@ describe('core game logic', () => {
     expect(beta.xp).toBe(0);
   });
 
+  it('drops the level-up shield to a short grace after the upgrade is chosen', () => {
+    const sim = new GameSim(() => 0.5);
+    const alpha = sim.addPlayer('Alpha');
+
+    sim.startRun();
+    alpha.player.position = { x: 100, y: 100 };
+    sim.getState().gems.push({
+      id: 'gem-levelup',
+      position: { x: 100, y: 100 },
+      value: alpha.xpToNext,
+      radius: 7,
+      color: '#5eead4',
+      life: 0
+    });
+
+    sim.update(1 / 60);
+
+    // While the upgrade menu is open the player is shielded so they cannot die
+    // with the picker up (resolveLevelUp parks the timer at ~9999).
+    expect(alpha.status).toBe('choosing');
+    expect(alpha.player.invulnerableTimer).toBeGreaterThan(100);
+
+    const choice = alpha.upgradeChoices[0];
+    expect(choice).toBeDefined();
+    sim.selectUpgrade(alpha.id, choice.id);
+
+    // After choosing, the shield must collapse to a short grace. Previously it
+    // stayed at ~9999 — and since a 'choosing' player is skipped in
+    // updatePlayers the timer never ticked down, leaving a LAN player invulnerable
+    // for the rest of the run after their first level-up.
+    expect(alpha.status).not.toBe('choosing');
+    expect(alpha.player.invulnerableTimer).toBeLessThanOrEqual(2);
+  });
+
   it('opens reward chests for only the opener', () => {
     const sim = new GameSim(() => 0.5);
     const alpha = sim.addPlayer('Alpha');

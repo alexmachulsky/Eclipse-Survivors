@@ -10,6 +10,7 @@ import { clamp } from './game/collisions';
 import { getActLabel } from './game/runDirector';
 import { saveRunRecord } from './game/persistence';
 import { creditRunReward } from './game/wallet';
+import { audioBus, diffSnapshotForAudio, toAudioInputs, type AudioInputs } from './game/audio';
 import type { MultiplayerGameState, PlayerCommand, PlayerRuntime } from './game/types';
 import { getUnlockedWeapons } from './game/weapons';
 
@@ -108,6 +109,12 @@ export default function App() {
   // Shards earned on the most recent LAN run-end. LAN runs on the server, so the
   // client credits its own wallet and surfaces the amount on the end screen.
   const [lanRunReward, setLanRunReward] = useState(0);
+  // Sound on/off, persisted. Reacts to snapshot deltas (covers solo + LAN).
+  const [audioEnabled, setAudioEnabled] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem('eclipse-survivors:audio-muted') !== '1';
+  });
+  const prevAudioRef = useRef<AudioInputs | null>(null);
 
   // Throttled HUD/overlay snapshot. Decoupled from `lanSnapshot` (which feeds
   // the canvas at full 30 Hz) so the HUD re-renders at ~12 Hz instead of 30 Hz.
@@ -124,6 +131,49 @@ export default function App() {
     () => (mode === 'lan' ? hudSnapshot : snapshot),
     [mode, hudSnapshot, snapshot]
   );
+
+  // Keep the audio bus in sync with the persisted mute preference.
+  useEffect(() => {
+    audioBus.setEnabled(audioEnabled);
+  }, [audioEnabled]);
+
+  // Browsers block audio until a user gesture; unlock the AudioContext on the
+  // first input, then drop the listeners.
+  useEffect(() => {
+    const unlock = () => {
+      audioBus.resume();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // Fire SFX from snapshot deltas. activeSnapshot is fed by both solo and LAN, so
+  // this one hook covers both modes; the bus throttles high-frequency events.
+  useEffect(() => {
+    const inputs = toAudioInputs(activeSnapshot);
+    for (const event of diffSnapshotForAudio(prevAudioRef.current, inputs)) {
+      audioBus.play(event);
+    }
+    prevAudioRef.current = inputs;
+  }, [activeSnapshot]);
+
+  const toggleAudio = useCallback(() => {
+    setAudioEnabled((on) => {
+      const next = !on;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('eclipse-survivors:audio-muted', next ? '0' : '1');
+      }
+      // Toggling is itself a user gesture, so it's a safe spot to unlock audio.
+      audioBus.resume();
+      return next;
+    });
+  }, []);
 
   // Reset savedRef when starting a new run. Mode-aware: in LAN the live phase
   // lives on hudSnapshot, not snapshot (which stays frozen at the menu).
@@ -349,7 +399,7 @@ export default function App() {
     return (
       <main className="app-shell">
         <LanGameCanvas state={lanSnapshot?.state ?? null} localPlayerId={lanSnapshot?.localPlayerId ?? null} sendCommand={sendLanCommand} />
-        {activeSnapshot.phase !== 'menu' && lanScreen === 'lobby' && <Hud snapshot={activeSnapshot} onPause={LAN_NO_PAUSE} />}
+        {activeSnapshot.phase !== 'menu' && lanScreen === 'lobby' && <Hud snapshot={activeSnapshot} onPause={LAN_NO_PAUSE} audioEnabled={audioEnabled} onToggleAudio={toggleAudio} />}
         {showLanSetup && (
           <LanSetup
             screen={lanScreen as Exclude<LanScreen, 'lobby'>}
@@ -383,7 +433,7 @@ export default function App() {
   return (
     <main className="app-shell">
       <GameCanvas onReady={handleReady} onSnapshot={setSnapshot} />
-      {snapshot.phase !== 'menu' && <Hud snapshot={snapshot} onPause={pauseRun} />}
+      {snapshot.phase !== 'menu' && <Hud snapshot={snapshot} onPause={pauseRun} audioEnabled={audioEnabled} onToggleAudio={toggleAudio} />}
       {snapshot.phase === 'menu' && <MainMenu onStart={startRun} onLanStart={openLanChooser} />}
       {snapshot.phase === 'paused' && <PauseMenu weapons={snapshot.weapons} snapshot={snapshot} onResume={resumeRun} onRestart={startRun} />}
       {snapshot.phase === 'levelUp' && (
