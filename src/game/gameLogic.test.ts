@@ -1441,6 +1441,60 @@ describe('wallet', () => {
   });
 });
 
+import { saveMetaUpgrades, salvageMultiplier } from './metaUpgrades';
+
+describe('meta upgrades (shard shop)', () => {
+  beforeEach(() => {
+    const store: Record<string, string> = {};
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => { store[k] = v; },
+      removeItem: (k: string) => { delete store[k]; },
+      clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+      key: () => null,
+      length: 0,
+    } as Storage;
+  });
+
+  it('applies purchased solo meta upgrades to the player on startRun', () => {
+    const baseline = createStartingPlayer({ x: 0, y: 0 }).maxHealth;
+    saveMetaUpgrades({ hull: 2 });
+    const engine = new GameEngine(() => 0.5);
+    engine.startRun();
+    // hull tier 2 = +30 max HP, started at full.
+    const snap = engine.getSnapshot();
+    expect(snap.maxHealth).toBe(baseline + 30);
+    expect(snap.health).toBe(snap.maxHealth);
+  });
+
+  it('does not touch the player when no meta upgrades are owned', () => {
+    const baseline = createStartingPlayer({ x: 0, y: 0 }).maxHealth;
+    const engine = new GameEngine(() => 0.5);
+    engine.startRun();
+    expect(engine.getSnapshot().maxHealth).toBe(baseline);
+  });
+
+  it('scales the solo run reward by the Salvage Protocol multiplier', () => {
+    saveMetaUpgrades({ salvage: 3 });
+    const engine = new GameEngine(() => 0.5);
+    engine.startRun();
+    const eng = engine as unknown as {
+      state: { stats: { timeSurvived: number; kills: number; level: number } };
+      creditWallet(won: boolean): void;
+    };
+    eng.state.stats.timeSurvived = 100;
+    eng.state.stats.kills = 40;
+    eng.state.stats.level = 5;
+    const base = calculateRunReward({ timeSurvived: 100, kills: 40, level: 5, upgradesCollected: 0, damageDealt: 0 }, false);
+
+    eng.creditWallet(false);
+
+    const mult = salvageMultiplier({ salvage: 3 });
+    expect(mult).toBeCloseTo(1.24, 6);
+    expect(loadWallet().shards).toBe(Math.round(base * mult));
+  });
+});
+
 describe('dt capping', () => {
   it('re-caps dt after timeScale so a long frame cannot tunnel physics', () => {
     const engine = new GameEngine(() => 0.5);
