@@ -6,6 +6,7 @@ import { damagePlayer, setPlayerFacing, updatePlayerMovement } from './player';
 import { startDash, tickDashCooldown, tickDashMotion, resolveDashHits, tryQueueDash, consumeDashQueue } from './dash';
 import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
+import { weaponDamageMultiplier } from './synergies';
 import {
   collectRunDirectorEvents,
   createRiftObjective,
@@ -617,7 +618,7 @@ export class GameSim {
 
         if (dx * dx + dy * dy <= radius * radius) {
           hit = true;
-          const damage = Math.round(weapon.damage * runtime.player.damageMultiplier * (1 + weapon.level * 0.28));
+          const damage = Math.round(weapon.damage * weaponDamageMultiplier(weapon, runtime.player) * (1 + weapon.level * 0.28));
           this.pushDamageText(this.createDamageText(enemy, damage, '#f0abfc'));
           runtime.stats.damageDealt += damage;
           enemy.health = Math.max(0, enemy.health - damage);

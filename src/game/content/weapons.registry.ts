@@ -1,4 +1,5 @@
 import { angleTo, vectorFromAngle } from '../collisions';
+import { weaponDamageMultiplier } from '../synergies';
 import type { Enemy, Player, Projectile, Weapon } from '../types';
 
 export interface FireContext {
@@ -29,7 +30,7 @@ function nextProjectileId(prefix: string): string {
 function fireMagicBolt({ weapon, player, target }: FireContext): Projectile[] {
   const angle = angleTo(player.position, target.position);
   const levelBonus = Math.max(0, weapon.level - 1);
-  const damage = Math.round(weapon.damage * player.damageMultiplier * (1 + levelBonus * 0.3));
+  const damage = Math.round(weapon.damage * weaponDamageMultiplier(weapon, player) * (1 + levelBonus * 0.3));
   const projectileSpeed = player.projectileSpeedMultiplier;
   const projectileCount = weapon.evolved ? 3 : weapon.level >= 4 ? 2 : 1;
 
@@ -57,7 +58,7 @@ function fireMagicBolt({ weapon, player, target }: FireContext): Projectile[] {
 function firePiercingArrow({ weapon, player, target }: FireContext): Projectile[] {
   const angle = angleTo(player.position, target.position);
   const levelBonus = Math.max(0, weapon.level - 1);
-  const damage = Math.round(weapon.damage * player.damageMultiplier * (1 + levelBonus * 0.3));
+  const damage = Math.round(weapon.damage * weaponDamageMultiplier(weapon, player) * (1 + levelBonus * 0.3));
   const projectileSpeed = player.projectileSpeedMultiplier;
   const projectileCount = weapon.evolved ? 3 : 1;
 
@@ -86,7 +87,7 @@ function firePiercingArrow({ weapon, player, target }: FireContext): Projectile[
 function fireHomingMissile({ weapon, player, target }: FireContext): Projectile[] {
   const angle = angleTo(player.position, target.position);
   const levelBonus = Math.max(0, weapon.level - 1);
-  const damage = Math.round(weapon.damage * player.damageMultiplier * (1 + levelBonus * 0.3));
+  const damage = Math.round(weapon.damage * weaponDamageMultiplier(weapon, player) * (1 + levelBonus * 0.3));
   const projectileSpeed = player.projectileSpeedMultiplier;
   // Evolved "Swarm Battery" fires a three-missile fan that turns harder.
   const projectileCount = weapon.evolved ? 3 : 1;

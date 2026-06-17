@@ -1,6 +1,7 @@
 import { PASSIVES, RARE_STAT_UPGRADES, STAT_UPGRADES } from './content';
 import { PASSIVES as PASSIVE_REGISTRY } from './content/passives.registry';
 import { EVOLUTIONS as EVOLUTION_REGISTRY } from './content/evolutions.registry';
+import { getAvailableSynergies, applySynergy, synergyLevel } from './synergies';
 import type { Player, UpgradeOption, Weapon } from './types';
 
 function pickOne<T>(items: T[], rng: () => number): T | undefined {
@@ -47,6 +48,21 @@ function createPassiveChoices(player: Player): UpgradeOption[] {
         rarity: 'common'
       };
     });
+}
+
+function createSynergyChoices(player: Player, weapons: Weapon[]): UpgradeOption[] {
+  return getAvailableSynergies(weapons, player).map<UpgradeOption>((synergy) => {
+    const nextLevel = synergyLevel(player, synergy.id) + 1;
+    return {
+      id: `synergy-${synergy.id}`,
+      title: nextLevel > 1 ? `${synergy.name} ${nextLevel}` : synergy.name,
+      description: synergy.description,
+      kind: 'synergy',
+      synergyId: synergy.id,
+      statDelta: synergy.effectLabel(nextLevel),
+      rarity: 'epic',
+    };
+  });
 }
 
 export function getEligibleEvolutions(player: Player, weapons: Weapon[]) {
@@ -108,6 +124,14 @@ export function createUpgradeChoices(
 
   const candidateWeapon = pickOne(weaponChoices.filter((c) => !choices.some((x) => x.id === c.id)), rng);
   addUnique(choices, candidateWeapon);
+
+  // Synergies are gated build milestones — when the loadout has earned one,
+  // surface it prominently (before filling with random stat cards) so a
+  // committed build is reliably rewarded.
+  const synergyChoices = createSynergyChoices(player, weapons).filter((c) => !isBanned(c.id));
+  const candidateSynergy = pickOne(synergyChoices.filter((c) => !choices.some((x) => x.id === c.id)), rng);
+  addUnique(choices, candidateSynergy);
+
   const candidatePassive = pickOne(passiveChoices.filter((c) => !choices.some((x) => x.id === c.id)), rng);
   addUnique(choices, candidatePassive);
 
@@ -238,6 +262,10 @@ export function applyUpgrade(player: Player, weapons: Weapon[], upgrade: Upgrade
     const passives = { ...player.passives, [upgrade.passiveId]: level };
     const nextPlayer = def.apply({ ...player, passives });
     return { player: nextPlayer, weapons };
+  }
+
+  if (upgrade.kind === 'synergy' && upgrade.synergyId) {
+    return { player: applySynergy(player, upgrade.synergyId), weapons };
   }
 
   if (upgrade.stat === 'damage') {
