@@ -42,7 +42,9 @@ export function createStartingPlayer(position: Vector): Player {
     dashDamageMult: 1,
     dashRechargeMult: 1,
     dashChargeBonus: 0,
-    lifestealOnKill: 0
+    lifestealOnKill: 0,
+    tagDamage: {},
+    synergies: {}
   };
 }
 

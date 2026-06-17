@@ -1,6 +1,7 @@
 import type { Enemy, Player, Projectile, Weapon } from './types';
 import { vectorFromAngle } from './collisions';
 import { WEAPONS } from './content/weapons.registry';
+import { weaponDamageMultiplier } from './synergies';
 
 let projectileSequence = 0;
 
@@ -50,7 +51,7 @@ export function createAreaPulse(weapon: Weapon, player: Player): Projectile {
     velocity: { x: 0, y: 0 },
     radius: 28,
     maxRadius,
-    damage: Math.round(weapon.damage * player.damageMultiplier * (1 + Math.max(0, weapon.level - 1) * 0.28)),
+    damage: Math.round(weapon.damage * weaponDamageMultiplier(weapon, player) * (1 + Math.max(0, weapon.level - 1) * 0.28)),
     life,
     maxLife: life,
     pierce: 999,

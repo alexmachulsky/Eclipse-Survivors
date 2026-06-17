@@ -61,6 +61,13 @@ export interface Player {
   dashRechargeMult: number;
   dashChargeBonus: number;
   lifestealOnKill: number;  // HP restored per heavy/elite/boss kill (Bloodlust passive; 0 = none)
+  // Synergy build-system (see synergies.ts). `tagDamage` is the materialized
+  // per-weapon-tag damage multiplier read by the fire path (a missing tag = 1×);
+  // `synergies` tracks how many times each synergy card has been taken (for card
+  // titles + max-level gating). Both default to {} and flow through the shared
+  // rewards/applyUpgrade path, so solo and LAN stay in lockstep.
+  tagDamage: Record<string, number>;
+  synergies: Record<string, number>;
 }
 
 export type EnemyType = 'basic' | 'fast' | 'tank' | 'ranged' | 'boss';
@@ -126,7 +133,7 @@ export interface Weapon {
   tags: string[];
 }
 
-export type UpgradeKind = 'stat' | 'weapon' | 'passive' | 'evolution';
+export type UpgradeKind = 'stat' | 'weapon' | 'passive' | 'evolution' | 'synergy';
 
 export interface UpgradeOption {
   id: string;
@@ -137,6 +144,7 @@ export interface UpgradeOption {
   weaponId?: WeaponId;
   passiveId?: PassiveId;
   evolutionId?: EvolutionId;
+  synergyId?: string;            // populated for synergy upgrades (kind === 'synergy')
   currentWeaponLevel?: number;   // populated for weapon upgrades so UI can show "lv.2 → 3"
   statDelta?: string;            // human-readable delta e.g. "+22% ATK" for stat/passive upgrades
   rarity?: 'common' | 'rare' | 'epic';

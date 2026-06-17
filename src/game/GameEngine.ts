@@ -28,6 +28,7 @@ import {
 import { SpatialGrid } from './spatialGrid';
 import { createInitialGameState } from './state';
 import { applyMetaUpgrades, loadMetaUpgrades, salvageMultiplier } from './metaUpgrades';
+import { weaponDamageMultiplier } from './synergies';
 import { getXpThreshold } from './rewards';
 import { createAreaPulse, createStarfallSparks, findNearestEnemy, fireWeaponAtTarget, getUnlockedWeapons } from './weapons';
 import type { DamageText, Enemy, GamePhase, GameState, HealthPickup, InputState, MultiplayerGameState, PlayerRuntime, Projectile, RewardChest, Telegraph, UpgradeOption, Vector, Viewport, Weapon } from './types';
@@ -757,7 +758,7 @@ export class GameEngine {
 
         if (dx * dx + dy * dy <= radius * radius) {
           hit = true;
-          const damage = Math.round(weapon.damage * this.state.player.damageMultiplier * (1 + weapon.level * 0.28));
+          const damage = Math.round(weapon.damage * weaponDamageMultiplier(weapon, this.state.player) * (1 + weapon.level * 0.28));
           this.pushDamageText(this.createDamageText(enemy, damage, '#f0abfc'));
           this.state.stats.damageDealt += damage;
           // 2b: Track orbit weapon damage

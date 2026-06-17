@@ -47,6 +47,7 @@ function kindLabel(choice: UpgradeOption): string {
     case 'evolution': return 'Evolution';
     case 'weapon': return 'Weapon';
     case 'passive': return 'Passive';
+    case 'synergy': return 'Synergy';
     default: return 'Stat';
   }
 }
@@ -67,7 +68,7 @@ function BoonCard({
   const color = RARITY_HEX[rarity];
   const Icon = isWeapon
     ? (choice.weaponId ? WeaponIconMap[choice.weaponId] : null)
-    : choice.kind === 'passive'
+    : choice.kind === 'passive' || choice.kind === 'synergy'
       ? StarIcon
       : (choice.stat ? StatIconMap[choice.stat] : null);
 
