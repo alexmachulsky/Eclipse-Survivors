@@ -2898,6 +2898,154 @@ h2 {
   transform: translateY(1px) scale(0.985);
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   Star Forge — between-run shard shop (solo meta-progression)
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Forge entry button on the main menu shows the live shard balance. */
+.secondary-button--forge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.secondary-button--forge .btn-glyph { color: var(--c-gold); }
+.forge-balance {
+  margin-left: auto;
+  padding-left: var(--space-3);
+  color: var(--c-gold-soft);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.shard-shop {
+  width: min(760px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.shop-balance {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  align-self: flex-start;
+  border: 1px solid rgb(212 175 55 / 0.28);
+  border-radius: var(--radius-pill);
+  background: rgb(212 175 55 / 0.06);
+}
+.shop-balance strong {
+  font-size: 22px;
+  color: var(--c-gold-soft);
+  font-variant-numeric: tabular-nums;
+}
+.shop-balance__label {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-ink);
+  opacity: 0.7;
+}
+
+.shop-grid {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-1) var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-3);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid rgb(94 234 212 / 0.16);
+  border-radius: var(--radius-md);
+  background: linear-gradient(160deg, rgb(94 234 212 / 0.05), rgb(8 10 22 / 0.5));
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.shop-card:hover { border-color: rgb(94 234 212 / 0.4); }
+.shop-card--maxed {
+  border-color: rgb(212 175 55 / 0.45);
+  background: linear-gradient(160deg, rgb(212 175 55 / 0.08), rgb(8 10 22 / 0.5));
+}
+
+.shop-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.shop-card__name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--c-gold-soft);
+}
+.shop-card__pips { display: inline-flex; gap: 3px; }
+.shop-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgb(94 234 212 / 0.35);
+  background: transparent;
+}
+.shop-pip--on {
+  background: var(--c-common);
+  border-color: var(--c-common);
+  box-shadow: 0 0 6px rgb(94 234 212 / 0.6);
+}
+.shop-card--maxed .shop-pip--on {
+  background: var(--c-gold);
+  border-color: var(--c-gold);
+  box-shadow: 0 0 6px rgb(212 175 55 / 0.6);
+}
+
+.shop-card__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--c-ink);
+  opacity: 0.82;
+}
+.shop-card__effect {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-common);
+}
+.shop-card__effect-next { color: var(--c-gold-soft); opacity: 0.95; }
+
+.shop-card__buy {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-variant-numeric: tabular-nums;
+}
+.shop-card__buy:disabled { opacity: 0.45; cursor: not-allowed; }
+.shop-card--maxed .shop-card__buy { opacity: 0.7; }
+
+.shop-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid rgb(94 234 212 / 0.12);
+}
+.shop-footer .secondary-button:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* Global reduced-motion guard — suppress all UI animation/transition for users
    who request reduced motion. Covers HUD/boon-picker/menu juice added in the polish pass. */
 @media (prefers-reduced-motion: reduce) {

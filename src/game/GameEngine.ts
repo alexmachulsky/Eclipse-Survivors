@@ -27,6 +27,7 @@ import {
 } from './runDirector';
 import { SpatialGrid } from './spatialGrid';
 import { createInitialGameState } from './state';
+import { applyMetaUpgrades, loadMetaUpgrades, salvageMultiplier } from './metaUpgrades';
 import { getXpThreshold } from './rewards';
 import { createAreaPulse, createStarfallSparks, findNearestEnemy, fireWeaponAtTarget, getUnlockedWeapons } from './weapons';
 import type { DamageText, Enemy, GamePhase, GameState, HealthPickup, InputState, MultiplayerGameState, PlayerRuntime, Projectile, RewardChest, Telegraph, UpgradeOption, Vector, Viewport, Weapon } from './types';
@@ -126,6 +127,10 @@ export class GameEngine {
 
   startRun(): void {
     this.state = createInitialGameState();
+    // SOLO ONLY: apply persistent Star Forge meta-upgrades to the fresh player.
+    // Done here (not in createInitialGameState) so the bonuses never reach the
+    // shared LAN sim (GameSim), which calls the same factory.
+    this.state.player = applyMetaUpgrades(this.state.player, loadMetaUpgrades());
     this.state.phase = 'playing';
     this.spawnTimer = 0.2;
     this.healthPickupTimer = this.nextHealthPickupInterval();
@@ -1218,7 +1223,7 @@ export class GameEngine {
     // CLAUDE.md). `walleted` resets with the rest of state on startRun().
     if (this.state.walleted) return;
     this.state.walleted = true;
-    this.state.lastRunReward = creditRunReward(this.state.stats, won);
+    this.state.lastRunReward = creditRunReward(this.state.stats, won, salvageMultiplier(loadMetaUpgrades()));
   }
 
   private createDamageText(enemy: Enemy, amount: number, color: string): DamageText {

@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameSnapshot } from '../game/GameEngine';
 import type { PlayerRuntime, Weapon } from '../game/types';
 import { loadRunHistory, type RunHistory } from '../game/persistence';
-import { loadWallet, type Wallet } from '../game/wallet';
+import { loadWallet, saveWallet, type Wallet } from '../game/wallet';
+import {
+  META_UPGRADES,
+  getLevel,
+  nextCost,
+  totalSpent,
+  loadMetaUpgrades,
+  saveMetaUpgrades,
+  type MetaLevels
+} from '../game/metaUpgrades';
 import { WeaponTile } from './Hud';
 import { AreaPulseIcon, MagicBoltIcon, OrbitIcon, PiercingArrowIcon, WeaponIconMap } from './icons';
 import { useFocusTrap } from './useFocusTrap';
@@ -10,6 +19,7 @@ import { useFocusTrap } from './useFocusTrap';
 interface MenuProps {
   onStart: () => void;
   onLanStart: () => void;
+  onOpenShop: () => void;
 }
 
 interface SummaryProps {
@@ -158,7 +168,7 @@ function EclipseDiagram() {
   );
 }
 
-export function MainMenu({ onStart, onLanStart }: MenuProps) {
+export function MainMenu({ onStart, onLanStart, onOpenShop }: MenuProps) {
   const [history, setHistory] = useState<RunHistory | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
 
@@ -252,6 +262,11 @@ export function MainMenu({ onStart, onLanStart }: MenuProps) {
           <button className="secondary-button" type="button" onClick={onLanStart}>
             LAN Multiplayer
           </button>
+          <button className="secondary-button secondary-button--forge" type="button" onClick={onOpenShop}>
+            <span className="btn-glyph" aria-hidden="true">◆</span>
+            Star Forge
+            {showShards && <span className="forge-balance">{wallet!.shards.toLocaleString()}</span>}
+          </button>
         </div>
 
         <div className="menu-arsenal" aria-label="Available weapons">
@@ -267,6 +282,112 @@ export function MainMenu({ onStart, onLanStart }: MenuProps) {
         <p className="control-hint">
           <kbd>WASD</kbd> move &nbsp;·&nbsp; <kbd>Mouse</kbd> aim &nbsp;·&nbsp; <kbd>Esc</kbd> pause
         </p>
+      </div>
+    </div>
+  );
+}
+
+interface ShardShopProps {
+  onClose: () => void;
+}
+
+export function ShardShop({ onClose }: ShardShopProps) {
+  const trapRef = useFocusTrap<HTMLDivElement>();
+  const [levels, setLevels] = useState<MetaLevels>(() => loadMetaUpgrades());
+  const [shards, setShards] = useState(() => loadWallet().shards);
+
+  const spent = totalSpent(levels);
+
+  const buy = (id: string, cost: number) => {
+    const wallet = loadWallet();
+    if (wallet.shards < cost) return;
+    const nextLevels: MetaLevels = { ...levels, [id]: getLevel(levels, id) + 1 };
+    const nextShards = wallet.shards - cost;
+    saveWallet({ ...wallet, shards: nextShards });
+    saveMetaUpgrades(nextLevels);
+    setLevels(nextLevels);
+    setShards(nextShards);
+  };
+
+  const refundAll = () => {
+    const wallet = loadWallet();
+    const refund = totalSpent(loadMetaUpgrades());
+    const nextShards = wallet.shards + refund;
+    saveWallet({ ...wallet, shards: nextShards });
+    saveMetaUpgrades({});
+    setLevels({});
+    setShards(nextShards);
+  };
+
+  return (
+    <div className="overlay overlay--menu overlay--codex">
+      <div
+        className="panel menu-panel menu-panel--codex shard-shop"
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Star Forge — spend shards on permanent upgrades"
+        tabIndex={-1}
+      >
+        <p className="eyebrow">Star Forge</p>
+        <h2 className="menu-title">Outfitting</h2>
+        <p className="menu-copy">
+          Spend Eclipse Shards on permanent solo upgrades. Modest, capped, and refundable any time.
+        </p>
+
+        <div className="shop-balance" aria-label="Shard balance">
+          <span className="almanac-shard-glyph" aria-hidden="true">◆</span>
+          <strong>{shards.toLocaleString()}</strong>
+          <span className="shop-balance__label">shards</span>
+        </div>
+
+        <ul className="shop-grid">
+          {META_UPGRADES.map((def) => {
+            const level = getLevel(levels, def.id);
+            const cost = nextCost(def, level);
+            const maxed = cost === null;
+            const affordable = cost !== null && shards >= cost;
+            return (
+              <li key={def.id} className={`shop-card${maxed ? ' shop-card--maxed' : ''}`}>
+                <div className="shop-card__head">
+                  <span className="shop-card__name">{def.name}</span>
+                  <span className="shop-card__pips" aria-label={`tier ${level} of ${def.tiers}`}>
+                    {Array.from({ length: def.tiers }, (_, i) => (
+                      <span key={i} className={`shop-pip${i < level ? ' shop-pip--on' : ''}`} aria-hidden="true" />
+                    ))}
+                  </span>
+                </div>
+                <p className="shop-card__desc">{def.description}</p>
+                <p className="shop-card__effect">
+                  {level > 0 ? def.effectLabel(level) : 'no bonus yet'}
+                  {!maxed && <span className="shop-card__effect-next"> → {def.effectLabel(level + 1)}</span>}
+                </p>
+                <button
+                  className="primary-button shop-card__buy"
+                  type="button"
+                  disabled={maxed || !affordable}
+                  onClick={() => cost !== null && buy(def.id, cost)}
+                >
+                  {maxed ? 'Maxed' : (
+                    <>
+                      <span className="almanac-shard-glyph" aria-hidden="true">◆</span>
+                      {cost!.toLocaleString()}
+                    </>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="shop-footer">
+          <button className="secondary-button" type="button" onClick={refundAll} disabled={spent === 0}>
+            Refund all ({spent.toLocaleString()} ◆)
+          </button>
+          <button className="primary-button btn--ritual" type="button" onClick={onClose}>
+            <span className="btn-label">Back</span>
+          </button>
+        </div>
       </div>
     </div>
   );

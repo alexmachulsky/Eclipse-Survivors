@@ -3,7 +3,7 @@ import { GameCanvas } from './components/GameCanvas';
 import { Hud } from './components/Hud';
 import { LanGameCanvas } from './components/LanGameCanvas';
 import { HUD_UPDATE_MS, shouldRefreshHud } from './components/hudThrottle';
-import { EndScreen, LanLobby, LanSetup, MainMenu, PauseMenu } from './components/OverlayScreens';
+import { EndScreen, LanLobby, LanSetup, MainMenu, PauseMenu, ShardShop } from './components/OverlayScreens';
 import { UpgradeScreen } from './components/UpgradeScreen';
 import { GameEngine, type GameSnapshot } from './game/GameEngine';
 import { clamp } from './game/collisions';
@@ -106,6 +106,7 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState('Disconnected');
   const [lanScreen, setLanScreen] = useState<LanScreen>('chooser');
   const [lanError, setLanError] = useState<string | null>(null);
+  const [showShop, setShowShop] = useState(false);
   // Shards earned on the most recent LAN run-end. LAN runs on the server, so the
   // client credits its own wallet and surfaces the amount on the end screen.
   const [lanRunReward, setLanRunReward] = useState(0);
@@ -434,7 +435,8 @@ export default function App() {
     <main className="app-shell">
       <GameCanvas onReady={handleReady} onSnapshot={setSnapshot} />
       {snapshot.phase !== 'menu' && <Hud snapshot={snapshot} onPause={pauseRun} audioEnabled={audioEnabled} onToggleAudio={toggleAudio} />}
-      {snapshot.phase === 'menu' && <MainMenu onStart={startRun} onLanStart={openLanChooser} />}
+      {snapshot.phase === 'menu' && !showShop && <MainMenu onStart={startRun} onLanStart={openLanChooser} onOpenShop={() => setShowShop(true)} />}
+      {snapshot.phase === 'menu' && showShop && <ShardShop onClose={() => setShowShop(false)} />}
       {snapshot.phase === 'paused' && <PauseMenu weapons={snapshot.weapons} snapshot={snapshot} onResume={resumeRun} onRestart={startRun} />}
       {snapshot.phase === 'levelUp' && (
         <UpgradeScreen

@@ -57,8 +57,11 @@ export function calculateRunReward(stats: GameStats, won: boolean): number {
 // Credit a finished run's reward into the persistent wallet and return the
 // amount earned. Shared by the solo engine (GameEngine.creditWallet) and the
 // LAN client (App.tsx) so both modes feed the same shard ledger.
-export function creditRunReward(stats: GameStats, won: boolean): number {
-  const reward = calculateRunReward(stats, won);
+//
+// `rewardMultiplier` boosts the earned amount — solo passes the Salvage Protocol
+// meta-upgrade multiplier; LAN omits it (defaults to 1) so co-op stays neutral.
+export function creditRunReward(stats: GameStats, won: boolean, rewardMultiplier = 1): number {
+  const reward = Math.round(calculateRunReward(stats, won) * rewardMultiplier);
   const wallet = loadWallet();
   saveWallet({
     shards: wallet.shards + reward,
