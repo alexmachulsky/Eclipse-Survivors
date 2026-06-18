@@ -1651,3 +1651,135 @@ describe('weapons registry', () => {
     }
   });
 });
+
+import { ELITE_AFFIXES as AFFIX_CATALOG, initEliteAffix as initAffix } from './eliteAffixes';
+import type { AffixIntent } from './eliteAffixes';
+import type { Enemy as EnemyT, EliteAffix } from './types';
+
+// Engine-wiring + cross-sim parity for elite affixes. The affix MATH is covered
+// in eliteAffixes.test.ts; here we exercise the GLUE each engine owns (spawn
+// assignment, telegraph/bomb/snipe intent application, splitter death) and
+// assert the solo GameEngine and authoritative GameSim apply it equivalently.
+describe('elite affixes — engine wiring', () => {
+  function makeAffixedElite(affix: EliteAffix, position: { x: number; y: number }): EnemyT {
+    const e = spawnEnemyOutsideViewport('tank', { x: 0, y: 0, width: 800, height: 600 }, 6, () => 0.5, 'elite');
+    e.id = `elite-${e.id}`;
+    e.position = { ...position };
+    e.health = 1_000_000; // survive incidental weapon fire while we drive frames
+    e.maxHealth = 1_000_000;
+    initAffix(e, affix);
+    return e;
+  }
+
+  type SoloHandle = {
+    startRun: () => void;
+    spawnElite: () => void;
+    applyAffixIntent: (intent: AffixIntent) => void;
+    collectDeadEnemies: () => void;
+    state: { enemies: EnemyT[]; player: { position: { x: number; y: number }; radius: number; health: number; invulnerableTimer: number; dash: { invulnRemaining: number } }; enemyProjectiles: { id: string }[]; telegraphs: { kind: string }[] };
+  };
+
+  it('GameEngine.spawnElite stamps a valid affix from the catalog', () => {
+    const engine = new GameEngine(() => 0.3) as unknown as SoloHandle;
+    engine.startRun();
+    engine.spawnElite();
+    const elite = engine.state.enemies[engine.state.enemies.length - 1];
+    expect(AFFIX_CATALOG).toContain(elite.affix);
+  });
+
+  it('GameSim.spawnElite stamps a valid affix from the catalog', () => {
+    const sim = new GameSim(() => 0.3);
+    sim.addPlayer('Alpha');
+    sim.startRun();
+    (sim as unknown as { spawnElite: () => void }).spawnElite();
+    const enemies = sim.getState().enemies;
+    const elite = enemies[enemies.length - 1];
+    expect(AFFIX_CATALOG).toContain(elite.affix);
+  });
+
+  it('a bomb intent damages a player inside the blast and spares one outside it', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as SoloHandle;
+    engine.startRun();
+    engine.state.player.position = { x: 1000, y: 1000 };
+    engine.state.player.invulnerableTimer = 0;
+    engine.state.player.dash.invulnRemaining = 0;
+
+    const before = engine.state.player.health;
+    engine.applyAffixIntent({ kind: 'bomb', position: { x: 1000, y: 1000 }, radius: 135, damage: 20 });
+    expect(engine.state.player.health).toBe(before - 20);
+
+    // Re-arm (a hit grants brief i-frames) and step well outside the radius.
+    engine.state.player.invulnerableTimer = 0;
+    engine.state.player.position = { x: 2000, y: 2000 };
+    const before2 = engine.state.player.health;
+    engine.applyAffixIntent({ kind: 'bomb', position: { x: 1000, y: 1000 }, radius: 135, damage: 20 });
+    expect(engine.state.player.health).toBe(before2);
+  });
+
+  it('a snipe intent spawns one enemy projectile', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as SoloHandle;
+    engine.startRun();
+    const before = engine.state.enemyProjectiles.length;
+    engine.applyAffixIntent({ kind: 'snipe', origin: { x: 500, y: 500 }, angle: 0, speed: 430, damage: 12 });
+    const added = engine.state.enemyProjectiles.filter((p) => p.id.startsWith('affix-snipe'));
+    expect(engine.state.enemyProjectiles.length).toBe(before + 1);
+    expect(added).toHaveLength(1);
+  });
+
+  it('a sniper elite telegraphs a line and then fires across many frames', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as SoloHandle & { update: (dt: number) => void };
+    engine.startRun();
+    engine.state.player.position = { x: 1600, y: 1200 };
+    engine.state.enemies.push(makeAffixedElite('sniper', { x: 1850, y: 1200 }));
+
+    let sawLine = false;
+    let sawSnipe = false;
+    for (let i = 0; i < 300; i++) {
+      engine.update(1 / 60);
+      if (engine.state.telegraphs.some((t) => t.kind === 'line')) sawLine = true;
+      if (engine.state.enemyProjectiles.some((p) => p.id.startsWith('affix-snipe'))) sawSnipe = true;
+    }
+    expect(sawLine).toBe(true);
+    expect(sawSnipe).toBe(true);
+  });
+
+  it('a splitter elite spawns two minions on death (GameEngine), after compaction', () => {
+    const engine = new GameEngine(() => 0.5) as unknown as SoloHandle;
+    engine.startRun();
+    const splitter = makeAffixedElite('splitter', { x: 1600, y: 1200 });
+    splitter.health = 0;
+    engine.state.enemies = [splitter];
+    engine.collectDeadEnemies();
+
+    const minions = engine.state.enemies.filter((e) => e.id.startsWith('split-'));
+    expect(minions).toHaveLength(2);
+    expect(engine.state.enemies.some((e) => e.affix === 'splitter')).toBe(false);
+    for (const m of minions) expect(m.affix).toBeUndefined();
+  });
+
+  it('solo and LAN apply an identical bomb intent for identical damage (parity)', () => {
+    const bomb: AffixIntent = { kind: 'bomb', position: { x: 1200, y: 1200 }, radius: 135, damage: 17 };
+
+    const engine = new GameEngine(() => 0.5) as unknown as SoloHandle;
+    engine.startRun();
+    engine.state.player.position = { x: 1200, y: 1200 };
+    engine.state.player.invulnerableTimer = 0;
+    engine.state.player.dash.invulnRemaining = 0;
+    const soloBefore = engine.state.player.health;
+    engine.applyAffixIntent(bomb);
+    const soloDamage = soloBefore - engine.state.player.health;
+
+    const sim = new GameSim(() => 0.5);
+    const p = sim.addPlayer('Alpha');
+    sim.startRun();
+    p.player.position = { x: 1200, y: 1200 };
+    p.player.invulnerableTimer = 0;
+    p.player.dash.invulnRemaining = 0;
+    const lanBefore = p.player.health;
+    (sim as unknown as { applyAffixIntent: (i: AffixIntent) => void }).applyAffixIntent(bomb);
+    const lanDamage = lanBefore - p.player.health;
+
+    expect(soloDamage).toBe(17);
+    expect(lanDamage).toBe(soloDamage);
+  });
+});

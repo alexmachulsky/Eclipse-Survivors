@@ -7,6 +7,7 @@ import { startDash, tickDashCooldown, tickDashMotion, resolveDashHits, tryQueueD
 import { resolveProjectileEnemyHit, updateProjectiles } from './projectiles';
 import { applyUpgrade, createChestRewardChoices, createUpgradeChoices } from './rewards';
 import { weaponDamageMultiplier } from './synergies';
+import { chooseEliteAffix, initEliteAffix, splitterMinions, tickEliteAffix, type AffixIntent } from './eliteAffixes';
 import {
   collectRunDirectorEvents,
   createRiftObjective,
@@ -298,6 +299,7 @@ export class GameSim {
     this.updateWeapons(cappedDt);
     this.updateEnemies(cappedDt);
     this.updateRangedEnemies(cappedDt);
+    this.updateEliteAffixes(cappedDt);
     this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, cappedDt, this.state.enemies);
     this.state.enemyProjectiles = updateProjectiles(this.state.enemyProjectiles, cappedDt);
     this.resolveCombat();
@@ -336,6 +338,7 @@ export class GameSim {
     const type = chooseEnemyType(Math.max(this.state.elapsed, 90), this.state.difficultyTier + 2, this.rng);
     const elite = this.applyCurseToEnemy(spawnEnemyOutsideViewport(type === 'boss' ? 'tank' : type, this.getSharedViewport(180), this.state.difficultyTier + 1, this.rng, 'elite'));
     elite.id = `elite-${elite.id}`;
+    initEliteAffix(elite, chooseEliteAffix(this.rng));
     this.state.enemies.push(elite);
     this.state.screenShake = Math.max(this.state.screenShake, 10);
   }
@@ -725,6 +728,61 @@ export class GameSim {
     }
   }
 
+  // Authoritative twin of GameEngine.updateEliteAffixes — same shared affix
+  // MATH (eliteAffixes.ts), LAN-flavoured glue: each elite aims at its nearest
+  // active player and the bomb intent damages every active player it covers.
+  private updateEliteAffixes(dt: number): void {
+    for (const enemy of this.state.enemies) {
+      if (!enemy.affix) continue;
+      const target = findNearestActivePlayer(this.state.players, enemy.position);
+      const intents = tickEliteAffix(enemy, {
+        dt,
+        nearestPlayerPos: target ? target.player.position : null,
+        elapsed: this.state.elapsed,
+        rng: this.rng
+      });
+      for (const intent of intents) this.applyAffixIntent(intent);
+    }
+  }
+
+  private applyAffixIntent(intent: AffixIntent): void {
+    switch (intent.kind) {
+      case 'telegraph':
+        this.addTelegraph(intent.telegraph);
+        break;
+      case 'bomb': {
+        for (const runtime of this.getActivePlayers()) {
+          if (!circlesOverlapSq(intent.position, intent.radius, runtime.player.position, runtime.player.radius)) {
+            continue;
+          }
+          const result = damagePlayer(runtime.player, intent.damage);
+          runtime.player = result.player;
+          runtime.status = runtime.player.health <= 0 ? 'downed' : runtime.status;
+          if (result.tookDamage) this.state.screenShake = Math.max(this.state.screenShake, 16);
+        }
+        this.addBurstParticles(intent.position, '#ffa23e', 18);
+        break;
+      }
+      case 'snipe':
+        if (this.state.enemyProjectiles.length < MAX_ENEMY_PROJECTILES) {
+          this.state.enemyProjectiles.push({
+            id: `affix-snipe-${intent.origin.x.toFixed(1)}-${intent.origin.y.toFixed(1)}-${this.state.elapsed.toFixed(3)}`,
+            owner: 'enemy',
+            kind: 'ranged',
+            position: { ...intent.origin },
+            velocity: vectorFromAngle(intent.angle, intent.speed),
+            radius: 7,
+            damage: intent.damage,
+            life: 2.1,
+            maxLife: 2.1,
+            pierce: 1,
+            color: '#ff5d73'
+          });
+        }
+        break;
+    }
+  }
+
   private resolveCombat(): void {
     this.resolvePlayerProjectiles();
     this.resolveEnemyProjectiles();
@@ -828,6 +886,8 @@ export class GameSim {
   private collectDeadEnemies(): void {
     const enemies = this.state.enemies;
     let writeIndex = 0;
+    // Splitter minions, appended only after the in-place compaction below.
+    const splitMinions: Enemy[] = [];
 
     for (const enemy of enemies) {
       if (enemy.health > 0) {
@@ -851,6 +911,20 @@ export class GameSim {
       if (enemy.rank === 'elite') {
         this.createRewardChest(enemy.position, 'elite');
       }
+      if (enemy.affix === 'splitter') {
+        for (const minion of splitterMinions(enemy, this.rng)) splitMinions.push(minion);
+        this.addTelegraph({
+          id: `affix-split-${enemy.id}-${this.state.elapsed.toFixed(3)}`,
+          position: { ...enemy.position },
+          angle: 0,
+          width: 6,
+          length: enemy.radius + 30,
+          life: 0.35,
+          maxLife: 0.35,
+          kind: 'ring',
+          color: '#b388ff'
+        });
+      }
       const particleSlots = MAX_PARTICLES - this.state.particles.length;
       if (particleSlots > 0) {
         const particles = createDeathParticles(enemy, this.rng);
@@ -866,6 +940,11 @@ export class GameSim {
     }
 
     enemies.length = writeIndex;
+    // Append after compaction; respect the authoritative population ceiling.
+    for (const minion of splitMinions) {
+      if (enemies.length >= MAX_ENEMIES) break;
+      enemies.push(minion);
+    }
   }
 
   private createRewardChest(position: Vector, source: RewardChest['source']): void {

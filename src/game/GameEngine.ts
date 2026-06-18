@@ -29,6 +29,7 @@ import { SpatialGrid } from './spatialGrid';
 import { createInitialGameState } from './state';
 import { applyMetaUpgrades, loadMetaUpgrades, salvageMultiplier } from './metaUpgrades';
 import { weaponDamageMultiplier } from './synergies';
+import { chooseEliteAffix, initEliteAffix, splitterMinions, tickEliteAffix, type AffixIntent } from './eliteAffixes';
 import { getXpThreshold } from './rewards';
 import { createAreaPulse, createStarfallSparks, findNearestEnemy, fireWeaponAtTarget, getUnlockedWeapons } from './weapons';
 import type { DamageText, Enemy, GamePhase, GameState, HealthPickup, InputState, MultiplayerGameState, PlayerRuntime, Projectile, RewardChest, Telegraph, UpgradeOption, Vector, Viewport, Weapon } from './types';
@@ -439,6 +440,7 @@ export class GameEngine {
       this.updateWeapons(scaledDt);
       this.state.enemies = updateEnemies(this.state.enemies, this.state.player.position, scaledDt);
       this.updateRangedEnemies(scaledDt);
+      this.updateEliteAffixes(scaledDt);
     }
 
     this.state.playerProjectiles = updateProjectiles(this.state.playerProjectiles, scaledDt, this.state.enemies);
@@ -563,6 +565,7 @@ export class GameEngine {
     const type = chooseEnemyType(Math.max(this.state.elapsed, 90), this.state.difficultyTier + 2, this.rng);
     const elite = this.applyCurseToEnemy(spawnEnemyOutsideViewport(type === 'boss' ? 'tank' : type, this.getViewport(180), this.state.difficultyTier + 1, this.rng, 'elite'));
     elite.id = `elite-${elite.id}`;
+    initEliteAffix(elite, chooseEliteAffix(this.rng));
     this.state.enemies.push(elite);
     this.state.screenShake = Math.max(this.state.screenShake, 10);
   }
@@ -850,6 +853,58 @@ export class GameEngine {
     this.state.enemyProjectiles.push(...shots);
   }
 
+  // Advance every affixed elite's telegraphed ability and apply the intents it
+  // emits. Affix MATH lives in the shared pure module (eliteAffixes.ts); this
+  // engine only owns the glue (telegraph push, player damage, projectile spawn)
+  // so solo and the authoritative LAN sim stay in lockstep. Guarded by
+  // `enemy.affix` so the un-affixed swarm never allocates an intent array.
+  private updateEliteAffixes(dt: number): void {
+    for (const enemy of this.state.enemies) {
+      if (!enemy.affix) continue;
+      const intents = tickEliteAffix(enemy, {
+        dt,
+        nearestPlayerPos: this.state.player.health > 0 ? this.state.player.position : null,
+        elapsed: this.state.elapsed,
+        rng: this.rng
+      });
+      for (const intent of intents) this.applyAffixIntent(intent);
+    }
+  }
+
+  private applyAffixIntent(intent: AffixIntent): void {
+    switch (intent.kind) {
+      case 'telegraph':
+        this.addTelegraph(intent.telegraph);
+        break;
+      case 'bomb': {
+        // Telegraphed AoE — the warning ring gave the player time to clear it.
+        if (circlesOverlapSq(intent.position, intent.radius, this.state.player.position, this.state.player.radius)) {
+          const result = damagePlayer(this.state.player, intent.damage);
+          this.state.player = result.player;
+          if (result.tookDamage) this.state.screenShake = Math.max(this.state.screenShake, 16);
+        }
+        this.addBurstParticles(intent.position, '#ffa23e', 18);
+        break;
+      }
+      case 'snipe':
+        // Solo enemy projectiles are uncapped (matches updateRangedEnemies).
+        this.state.enemyProjectiles.push({
+          id: `affix-snipe-${intent.origin.x.toFixed(1)}-${intent.origin.y.toFixed(1)}-${this.state.elapsed.toFixed(3)}`,
+          owner: 'enemy',
+          kind: 'ranged',
+          position: { ...intent.origin },
+          velocity: vectorFromAngle(intent.angle, intent.speed),
+          radius: 7,
+          damage: intent.damage,
+          life: 2.1,
+          maxLife: 2.1,
+          pierce: 1,
+          color: '#ff5d73'
+        });
+        break;
+    }
+  }
+
   private resolveCombat(): void {
     this.resolvePlayerProjectiles();
     this.resolveEnemyProjectiles();
@@ -945,6 +1000,10 @@ export class GameEngine {
   private collectDeadEnemies(): void {
     const enemies = this.state.enemies;
     let writeIndex = 0;
+    // Splitter elites spawn minions on death. Collect them here but append only
+    // AFTER compaction below — pushing into `enemies` mid-loop would corrupt the
+    // in-place filter (it iterates the same array we're rewriting).
+    const splitMinions: Enemy[] = [];
 
     for (const enemy of enemies) {
       if (enemy.health > 0) {
@@ -978,6 +1037,20 @@ export class GameEngine {
       this.state.gems.push(createXpGem(enemy));
       if (enemy.rank === 'elite') {
         this.createRewardChest(enemy.position, 'elite');
+      }
+      if (enemy.affix === 'splitter') {
+        for (const minion of splitterMinions(enemy, this.rng)) splitMinions.push(minion);
+        this.addTelegraph({
+          id: `affix-split-${enemy.id}-${this.state.elapsed.toFixed(3)}`,
+          position: { ...enemy.position },
+          angle: 0,
+          width: 6,
+          length: enemy.radius + 30,
+          life: 0.35,
+          maxLife: 0.35,
+          kind: 'ring',
+          color: '#b388ff'
+        });
       }
       const particleSlots = MAX_PARTICLES - this.state.particles.length;
       if (particleSlots > 0) {
@@ -1042,6 +1115,8 @@ export class GameEngine {
     }
 
     enemies.length = writeIndex;
+    // Safe to append now that the in-place compaction is done (solo is uncapped).
+    for (const minion of splitMinions) enemies.push(minion);
   }
 
   private createRewardChest(position: Vector, source: RewardChest['source']): void {
