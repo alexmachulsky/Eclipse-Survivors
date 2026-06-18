@@ -82,7 +82,7 @@ All mutable game state lives inside `GameEngine` (`src/game/GameEngine.ts`). Rea
 
 Two mechanisms keep the frame rate at 60 fps:
 
-1. **Performance mode** — `GameCanvas` samples FPS every 250 ms. If it falls below 58 fps for two consecutive windows it calls `engine.setPerformanceMode(true)`, which disables all glow effects and swaps each enemy's detailed sprite for a pre-rendered lite variant (`spriteGroup.lite` in `renderAssets.ts`; the standalone `drawEnemyLite` function is unused dead code). Performance mode turns off again after 16 consecutive windows at ≥59.5 fps.
+1. **Performance mode** — `GameCanvas` samples FPS every 250 ms. If it falls below 58 fps for two consecutive windows it calls `engine.setPerformanceMode(true)`, which disables all glow effects and swaps each enemy's detailed sprite for a pre-rendered lite variant (`spriteGroup.lite` in `renderAssets.ts`). Performance mode turns off again after 16 consecutive windows at ≥59.5 fps.
 
 2. **Dynamic glow scale** — Even outside performance mode, `glowScale` is set to 0 (≥90 entities), 0.35 (55–89 entities), or 1.0 (<55 entities) each frame. The `setGlow()` helper multiplies `shadowBlur` by `glowScale` internally and drops the shadow color when the result is 0, so most `setGlow()` calls are unconditional — use it instead of assigning `ctx.shadowBlur` directly. Per-entity hot paths (particles, damage texts) additionally guard with `if (!this.fastRender)`, where `fastRender = performanceMode || glowScale === 0`.
 

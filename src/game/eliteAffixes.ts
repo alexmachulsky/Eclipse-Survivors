@@ -46,7 +46,6 @@ export interface AffixTickContext {
   dt: number;
   nearestPlayerPos: Vector | null;
   elapsed: number;
-  rng: () => number;
 }
 
 /** Deterministically pick an affix from the catalog (consumes one rng value). */

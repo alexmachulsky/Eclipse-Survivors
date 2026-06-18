@@ -23,7 +23,6 @@ import type {
   DamageText,
   Enemy,
   GameStats,
-  HealthPickup,
   MultiplayerGameState,
   PlayerCommand,
   PlayerRuntime,
@@ -738,8 +737,7 @@ export class GameSim {
       const intents = tickEliteAffix(enemy, {
         dt,
         nearestPlayerPos: target ? target.player.position : null,
-        elapsed: this.state.elapsed,
-        rng: this.rng
+        elapsed: this.state.elapsed
       });
       for (const intent of intents) this.applyAffixIntent(intent);
     }
