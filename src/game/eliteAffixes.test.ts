@@ -22,7 +22,7 @@ function elite(affix: EliteAffix): Enemy {
 /** Tick repeatedly until an intent of `kind` is emitted, or give up. */
 function tickUntil(enemy: Enemy, kind: AffixIntent['kind'], target = { x: 700, y: 300 }): AffixIntent[] {
   for (let i = 0; i < 600; i++) {
-    const intents = tickEliteAffix(enemy, { dt: 1 / 60, nearestPlayerPos: target, elapsed: i / 60, rng: () => 0.5 });
+    const intents = tickEliteAffix(enemy, { dt: 1 / 60, nearestPlayerPos: target, elapsed: i / 60 });
     const hit = intents.find((x) => x.kind === kind);
     if (hit) return intents;
   }
@@ -49,7 +49,7 @@ describe('initEliteAffix', () => {
 describe('tickEliteAffix — telegraph then payload', () => {
   it('does nothing for an enemy with no affix', () => {
     const plain = spawnEnemyOutsideViewport('basic', VIEWPORT, 1, () => 0.5);
-    expect(tickEliteAffix(plain, { dt: 1 / 60, nearestPlayerPos: { x: 0, y: 0 }, elapsed: 0, rng: () => 0.5 })).toEqual([]);
+    expect(tickEliteAffix(plain, { dt: 1 / 60, nearestPlayerPos: { x: 0, y: 0 }, elapsed: 0 })).toEqual([]);
   });
 
   it('sniper telegraphs a line, locks its angle, then fires along it', () => {
@@ -91,7 +91,7 @@ describe('tickEliteAffix — telegraph then payload', () => {
   it('sniper without a target idles rather than firing', () => {
     const e = elite('sniper');
     for (let i = 0; i < 300; i++) {
-      const intents = tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: null, elapsed: i / 60, rng: () => 0.5 });
+      const intents = tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: null, elapsed: i / 60 });
       expect(intents.some((x) => x.kind === 'snipe')).toBe(false);
     }
   });
@@ -102,7 +102,7 @@ describe('tickEliteAffix — telegraph then payload', () => {
     tickUntil(e, 'telegraph');
     // run well past the windup
     for (let i = 0; i < 300; i++) {
-      tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: { x: 700, y: 300 }, elapsed: i / 60, rng: () => 0.5 });
+      tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: { x: 700, y: 300 }, elapsed: i / 60 });
     }
     expect(e.speed).toBeGreaterThan(baseSpeed);
     // no second telegraph should ever come (one-shot enrage)
@@ -134,7 +134,7 @@ describe('JSON-safety of affix state', () => {
       const e = elite(affix);
       assertFiniteAffixState(e);
       for (let i = 0; i < 1200; i++) {
-        tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: { x: 700, y: 300 }, elapsed: i / 60, rng: () => 0.5 });
+        tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: { x: 700, y: 300 }, elapsed: i / 60 });
         assertFiniteAffixState(e);
       }
     });
@@ -144,7 +144,7 @@ describe('JSON-safety of affix state', () => {
     const e = elite('haste');
     expect(e.affixSpent ?? false).toBe(false);
     for (let i = 0; i < 600; i++) {
-      tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: { x: 700, y: 300 }, elapsed: i / 60, rng: () => 0.5 });
+      tickEliteAffix(e, { dt: 1 / 60, nearestPlayerPos: { x: 700, y: 300 }, elapsed: i / 60 });
     }
     expect(e.affixSpent).toBe(true);
     expect(e.affixCooldown).not.toBe(Infinity);
