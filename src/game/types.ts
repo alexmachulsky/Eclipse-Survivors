@@ -73,6 +73,11 @@ export interface Player {
 export type EnemyType = 'basic' | 'fast' | 'tank' | 'ranged' | 'boss';
 export type EnemyRank = 'normal' | 'elite' | 'boss';
 
+// Elite affixes — one telegraphed modifier carried by a scheduled elite (see
+// eliteAffixes.ts). All affix behaviour is computed by SHARED pure functions so
+// the solo engine and the authoritative LAN sim stay in lockstep.
+export type EliteAffix = 'bomber' | 'sniper' | 'splitter' | 'haste';
+
 export interface Enemy {
   id: string;
   type: EnemyType;
@@ -88,6 +93,14 @@ export interface Enemy {
   color: string;
   cooldown: number;
   hitFlash: number;
+  // Elite affix state (only set on affixed elites; see eliteAffixes.ts). These
+  // are driven entirely by shared pure functions so solo + LAN stay in lockstep,
+  // and JSON-serialize cleanly to LAN clients (which only render them).
+  affix?: EliteAffix;
+  affixCooldown?: number;  // seconds until the next telegraphed action
+  affixWindup?: number;    // >0 while a telegraphed action is in flight (lands at 0)
+  affixAngle?: number;     // locked aim angle for the sniper shot
+  affixSpent?: boolean;    // latched true once a one-shot affix (haste) has fired
 }
 
 export type ProjectileOwner = 'player' | 'enemy';
